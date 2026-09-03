@@ -17,6 +17,7 @@ from jobhunter.models.facts import (
     ReviewFacts,
     SalarySignal,
     Shareholder,
+    SlangEntry,
 )
 from jobhunter.models.query import CompanyQuery
 from jobhunter.models.raw import CollectorResult, RawItem
@@ -194,6 +195,65 @@ class TestBusinessExternalInvestmentsCoercion:
     def test_unparseable_becomes_none(self):
         b = BusinessFacts.model_validate({"external_investments_count": "无数据"})
         assert b.external_investments_count is None
+
+
+class TestSlangEntry:
+    """SlangEntry surfaces internet / workplace slang used in UGC reviews,
+    with a plain-Chinese gloss so report readers can parse it."""
+
+    def test_minimal(self):
+        s = SlangEntry(term="ICU")
+        assert s.term == "ICU"
+        assert s.meaning == ""
+        assert s.count == 1
+
+    def test_full(self):
+        s = SlangEntry(
+            term="内卷",
+            meaning="竞争白热化、投入产出比低",
+            count=5,
+            url="https://www.zhihu.com/q/juan",
+        )
+        assert s.count == 5
+        assert str(s.url) == "https://www.zhihu.com/q/juan"
+
+    def test_count_string_coerces(self):
+        s = SlangEntry.model_validate({"term": "ICU", "count": "约 5 次"})
+        assert s.count == 5
+
+    def test_count_unparseable_defaults_to_1(self):
+        s = SlangEntry.model_validate({"term": "ICU", "count": "???"})
+        assert s.count == 1
+
+    def test_count_zero_clamped_to_1(self):
+        s = SlangEntry.model_validate({"term": "ICU", "count": 0})
+        assert s.count == 1
+
+    def test_round_trip(self):
+        s = SlangEntry(term="摆烂", meaning="主动降低投入", count=3)
+        s2 = SlangEntry.model_validate_json(s.model_dump_json())
+        assert s2.term == "摆烂"
+        assert s2.meaning == "主动降低投入"
+        assert s2.count == 3
+
+
+class TestReviewFactsSlangGlossary:
+    """ReviewFacts.slang_glossary coerces null → [], and validates entries."""
+
+    def test_null_glossary_becomes_empty(self):
+        r = ReviewFacts.model_validate({"slang_glossary": None})
+        assert r.slang_glossary == []
+
+    def test_slang_glossary_with_entries(self):
+        r = ReviewFacts.model_validate({
+            "slang_glossary": [
+                {"term": "ICU", "meaning": "996 反制运动", "count": 3},
+                {"term": "内卷", "meaning": "过度竞争"},
+            ]
+        })
+        assert len(r.slang_glossary) == 2
+        assert r.slang_glossary[0].term == "ICU"
+        assert r.slang_glossary[1].count == 1  # default
 
 
 class TestNullListCoercion:

@@ -21,7 +21,9 @@ EXTRACT_REVIEWS_SUFFIX = (
     "（B）overtime_signals: 加班模式（枚举 996/995/大小周/弹性/不加班）与强度（low/medium/high），"
     "（C）turnover_signals: 离职率（low/medium/high/unknown），"
     "（D）vibe_signals: 团队氛围情感（positive/neutral/negative/mixed），"
-    "（E）jd_gap_signals: 招聘 JD 与实际工作的差距（JD 承诺/实际）。每条 signal 给一句 evidence 与 1 个 url。"
+    "（E）jd_gap_signals: 招聘 JD 与实际工作的差距（JD 承诺/实际），"
+    "（F）slang_glossary: 原文里出现的**职场 / 互联网口语词**（如「内卷」「ICU」「摆烂」「跑路」「PUA」「卷王」「奋斗逼」「黑厂」「大小周」「躺平」「核动力加班」「毁约」），"
+    "给 1 句通俗解释 meaning（≤30 字）、出现次数 count、最相关的 url。每条 signal 给一句 evidence 与 1 个 url。"
 )
 
 EXTRACT_NEWS_SUFFIX = (

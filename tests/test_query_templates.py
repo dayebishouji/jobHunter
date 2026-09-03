@@ -68,6 +68,43 @@ class TestReviewQueriesExpansion:
         assert any("杭州 避雷" in s for s in q)
 
 
+class TestReviewSlangExpansion:
+    """Slang queries (LLM-generated colloquial recall terms) get appended
+    as plain query strings and as company-anchored variants."""
+
+    def test_no_slang_means_no_extras(self):
+        q = review_queries(_q("阿里巴巴集团"))
+        # 6 base queries, no slang
+        assert len(q) == 6
+
+    def test_with_slang_appends_company_anchored_and_bare(self):
+        slang = ["内卷", "ICU", "摆烂"]
+        q = review_queries(_q("阿里巴巴集团", slang_queries=slang))
+        # 6 base + 3 × 2 (anchored + bare) = 12
+        assert len(q) == 12
+        assert any("阿里巴巴集团 内卷" in s for s in q)
+        assert any("阿里巴巴集团 ICU" in s for s in q)
+        assert any(s == "摆烂" for s in q)
+
+    def test_slang_capped_at_8(self):
+        slang = [f"词{i}" for i in range(20)]
+        q = review_queries(_q("X", slang_queries=slang))
+        # 6 base + 8 × 2 = 22
+        assert len(q) == 22
+
+    def test_slang_dedup(self):
+        slang = ["内卷", "内卷", "ICU"]
+        q = review_queries(_q("X", slang_queries=slang))
+        # 6 + (2 unique) × 2 = 10
+        assert len(q) == 10
+
+    def test_empty_slang_ignored(self):
+        slang = ["", "  ", "内卷"]
+        q = review_queries(_q("X", slang_queries=slang))
+        # 6 + 1 × 2 = 8
+        assert len(q) == 8
+
+
 class TestOtherDomainsNoAliases:
     """business / judicial / news should NOT use aliases — aggregator data
     is keyed by official name, not casual abbreviation."""

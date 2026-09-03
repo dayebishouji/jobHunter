@@ -4,14 +4,14 @@
 
 ## 项目一句话
 
-输入「公司 + 岗位 + 城市」→ 5–10 分钟生成单文件 HTML 报告（5 轴打分 + 工商/司法/公司画像/薪酬/加班/氛围/舆情 + 面试反问）。数据源 Tavily + Claude，输出可分享。
+输入「公司 + 岗位 + 城市」→ 5–10 分钟生成单文件 HTML 报告（5 轴打分 + 工商/司法/公司画像/薪酬/加班/氛围/舆情 + 面试反问 + 网络词解读）。数据源 Tavily + Claude，输出可分享。
 
 ## 怎么跑
 
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
 scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
-.venv/Scripts/python.exe -m pytest                       # 92 tests
+.venv/Scripts/python.exe -m pytest                       # 133 tests
 ```
 
 `.env` 在 `e:\project\jobHunter\.env`（`ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` 可选走 ccswitch 中转 + `TAVILY_API_KEY`）。
@@ -33,15 +33,17 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.1.5）
+## 当前边界（v0.1.6）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
 - ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
 - LLM 偶有 enum 同义词（"在业"→存续 / "重"→high），已加 per-field 校验器
 - LLM 偶对 Optional 子模型字段（business / reviews / judicial / company_profile）返回非 dict 值，`consolidate` 步调 `_sanitize_aggregated` 清洗成 None
+- LLM 偶对数字字段（base_monthly_k / stake_pct / case_count_total / enforcement_records 等）返回中文串 ("约 8 起"、"35%"、"面议")，已加 per-field 校验器把可解析串 coerce 成数字、其余 None
 - consolidation 步 max_tokens 已 8000（默认 4096 不够）
 - 交互模式在 Python 3.14 下用 `loop.run_in_executor` 跑 InquirerPy，绕开嵌套 asyncio.run
-- reviews 域查询会先调一次 LLM 生成公司别名（缩写 / 英文名），别名最多取 3 个，避免一次跑挂
+- reviews 域查询会先调一次 LLM 生成公司别名（缩写 / 英文名），别名最多取 3 个；v0.1.6 起再加 slang 召回（5–8 个 2-6 字口语词，如 内卷/ICU/摆烂/跑路/PUA），prompt 明确禁止含公司名
+- ReviewFacts 现在带 slang_glossary 字段，chapter V 末尾渲染「网络词解读」列表（≤30 字 meaning + count + url）
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 
 ## 下次接手该知道

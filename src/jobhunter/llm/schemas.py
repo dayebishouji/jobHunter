@@ -22,7 +22,7 @@ _EXTRACT_TOOLS: list[tuple[type, str, str]] = [
     (
         ReviewFacts,
         "record_review_facts",
-        "把原材料里关于该公司员工评价（薪酬/加班/离职/氛围/JD差距）的信号，整理成结构化记录。",
+        "把原材料里关于该公司员工评价（薪酬/加班/离职/氛围/JD差距/职场网络词）的信号，整理成结构化记录。",
     ),
     (
         NewsFacts,

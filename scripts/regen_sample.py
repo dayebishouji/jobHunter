@@ -25,6 +25,7 @@ from jobhunter.models.facts import (
     SalarySignal,
     OvertimeSignal,
     Shareholder,
+    SlangEntry,
     VibeSignal,
 )
 from jobhunter.models.query import CompanyQuery
@@ -73,6 +74,18 @@ def main() -> None:
                        url="https://www.kanzhun.com/r/abc"),
             VibeSignal(sentiment="negative", evidence="中干空降多，决策不稳定",
                        url="https://www.zhihu.com/q/vibe2"),
+        ],
+        slang_glossary=[
+            SlangEntry(term="996", meaning="早 9 晚 9 每周 6 天的高强度工时",
+                       count=5, url="https://www.zhihu.com/q/996"),
+            SlangEntry(term="大小周", meaning="隔周双休、隔周单休",
+                       count=3, url="https://www.zhihu.com/q/weekend"),
+            SlangEntry(term="ICU", meaning="指 996.ICU,讽刺过度加班危及健康",
+                       count=2, url="https://github.com/996icu/996.ICU"),
+            SlangEntry(term="PUA", meaning="精神操控式管理风格,贬义",
+                       count=2, url="https://www.zhihu.com/q/pua"),
+            SlangEntry(term="跑路", meaning="离职 / 跳槽",
+                       count=4, url="https://www.zhihu.com/q/quit"),
         ],
         source_urls=[
             "https://www.zhihu.com/q/996",

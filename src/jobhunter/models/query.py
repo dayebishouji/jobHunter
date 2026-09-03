@@ -21,6 +21,10 @@ class CompanyQuery(BaseModel):
         default_factory=list,
         description="LLM 自动生成的常见缩写 / 英文名 / 子品牌（用于 reviews 域查询展开）",
     )
+    slang_queries: list[str] = Field(
+        default_factory=list,
+        description="LLM 生成的口语化搜索词（用于 reviews 域召回增强,如 「ICU」「内卷」「摆烂」）",
+    )
 
     def display(self) -> str:
         parts = [self.company]

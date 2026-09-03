@@ -1,6 +1,6 @@
 # jobHunter — 反向背调 CLI
 
-个人向「反向背调」工具，把图里那种 ¥29 人工服务自动化：输入公司名 + 岗位 + 城市，5–10 分钟产出一份覆盖工商 / 司法 / 薪酬 / 加班 / 氛围 / 舆情 / 公司画像 / 面试反问的 HTML 报告。
+个人向「反向背调」工具，把图里那种 ¥29 人工服务自动化：输入公司名 + 岗位 + 城市，5–10 分钟产出一份覆盖工商 / 司法 / 薪酬 / 加班 / 氛围 / 舆情 / 公司画像 / 面试反问 / 网络词解读的 HTML 报告。
 
 **形态**：本地 Python CLI（InquirerPy 交互 + Click 非交互），Anthropic Claude 做结构化抽取与综合，Tavily 做评价 / 新闻类搜索，输出可折叠、带源链接、移动端友好、深色模式自适应的单文件 HTML。
 
@@ -54,7 +54,7 @@ src/jobhunter/
 ├── models/               # Pydantic 数据模型
 │   ├── query.py          # CompanyQuery
 │   ├── raw.py            # RawItem, CollectorResult
-│   ├── facts.py          # BusinessFacts / ReviewFacts / NewsFacts / JudicialFacts / CompanyProfile
+│   ├── facts.py          # BusinessFacts / ReviewFacts / NewsFacts / JudicialFacts / CompanyProfile / SlangEntry
 │   ├── scoring.py        # RiskAxis + AxisScore
 │   └── report.py         # ReportData
 ├── collectors/           # gsxt / wenshu (软失败) + 5 路 Tavily(工商/司法/画像/评价/新闻)
@@ -78,18 +78,19 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 92 tests
+pytest                        # 133 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.5）
+## 已知限制（v0.1.6）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
-- **Tavily 免费档** 1000 credits / 月，每次完整跑 30–60 credits
+- **Tavily 免费档** 1000 credits / 月，每次完整跑 30–60 credits（v0.1.6 起加 slang 召回额外消耗约 16 个查询）
 - **ccswitch / one-api 中转** LLM 输出偶有 schema 偏差，已通过 `NullTolerantListBase` + per-field 校验器兜底
 - **inferences 段** 在 consolidation 输出 token 紧张时可能为空，不影响主功能
 - **公司画像域** 依赖 Tavily 在百度百科 / IT 桔子 / 创业邦的命中；小众公司可能拿不到完整字段，仅展示已抓到的部分
+- **v0.1.6 网络词召回**：依赖 LLM 生成 5–8 个 slang 查询词（内卷 / ICU / 摆烂 / 跑路 …）提升 UGC 召回；抽取后报告 chapter V 末尾会附「网络词解读」列表；如 LLM 失败则跳过
 - 不支持：批量多公司、SQLite watchlist、Web 服务、PDF 导出、Playwright（v0.2 候选）
 
 ## 免责

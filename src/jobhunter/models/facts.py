@@ -282,12 +282,37 @@ class JDGapSignal(BaseModel):
     url: HttpUrl | None = None
 
 
+class SlangEntry(BaseModel):
+    """A workplace / internet slang term surfaced in UGC reviews,
+    with a plain-Chinese gloss so report readers can parse it."""
+    term: str = Field(..., min_length=1, max_length=20)
+    meaning: str = Field(default="", max_length=200)
+    count: int = 1
+    url: HttpUrl | None = None
+
+    @field_validator("count", mode="before")
+    @classmethod
+    def _coerce_count(cls, v):
+        if v is None or isinstance(v, bool):
+            return 1 if v is None else int(v)
+        if isinstance(v, int):
+            return max(1, v)
+        if isinstance(v, float):
+            return max(1, int(v))
+        if isinstance(v, str):
+            import re
+            m = re.search(r"\d+", v.replace(",", ""))
+            return max(1, int(m.group())) if m else 1
+        return 1
+
+
 class ReviewFacts(NullTolerantListBase):
     salary_signals: list[SalarySignal] = Field(default_factory=list)
     overtime_signals: list[OvertimeSignal] = Field(default_factory=list)
     turnover_signals: list[TurnoverSignal] = Field(default_factory=list)
     vibe_signals: list[VibeSignal] = Field(default_factory=list)
     jd_gap_signals: list[JDGapSignal] = Field(default_factory=list)
+    slang_glossary: list[SlangEntry] = Field(default_factory=list)
     source_urls: list[HttpUrl] = Field(default_factory=list)
 
 

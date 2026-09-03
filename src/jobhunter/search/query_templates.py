@@ -72,6 +72,11 @@ def review_queries(q: CompanyQuery) -> list[str]:
     abbreviation or English name, not the full legal name. To improve recall,
     we expand queries across the company name + LLM-generated aliases (capped
     at 4 total names to keep Tavily cost bounded).
+
+    Slang queries (LLM-generated colloquial recall terms — "ICU / 内卷 / 摆烂
+    / 跑路 / PUA ...") are emitted once each without name prefix; they are
+    site-allowlisted so the search engine applies the same UGC filter, and
+    we cap their count to keep Tavily cost bounded.
     """
     p = q.position.strip()
     city = q.city.strip()
@@ -91,6 +96,23 @@ def review_queries(q: CompanyQuery) -> list[str]:
         for n in names:
             queries.append(f'"{n}" {p} 体验')
             queries.append(f'{p} {n} {"避雷" if not city else f"{city} 避雷"}')
+
+    # Slang recall: each term gets the primary company name as a soft context
+    # anchor so we still bias toward this company, but the term itself drives
+    # the search (not the quoted company name). Cap at 8 to bound Tavily cost.
+    seen: set[str] = set()
+    for raw in (q.slang_queries or [])[:8]:
+        term = raw.strip()
+        if not term or term in seen:
+            continue
+        seen.add(term)
+        # Primary name + slang term keeps Tavily focused on this company while
+        # letting the slang drive vocabulary recall.
+        queries.append(f'{q.company} {term}')
+        # Also a bare slang query — broader recall when a post doesn't even
+        # mention the company name (e.g., a rant that uses just "我们部门").
+        queries.append(term)
+
     return queries
 
 

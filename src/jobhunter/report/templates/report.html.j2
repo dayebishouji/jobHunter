@@ -431,6 +431,30 @@
     {% endfor %}
   </ul>
   {% endif %}
+
+  {% if r and r.slang_glossary %}
+  <div class="slang-glossary" aria-label="网络词解读">
+    <div class="slang-glossary-head">
+      <span class="slang-glossary-num">F</span>
+      <span class="slang-glossary-title">网络词解读</span>
+      <span class="slang-glossary-dek">原帖里出现的口语 / 互联网表达</span>
+    </div>
+    <dl class="slang-list">
+      {% for s in r.slang_glossary %}
+      <div class="slang-row">
+        <dt class="slang-term">
+          <span class="slang-word">{{ s.term }}</span>
+          {% if s.count and s.count > 1 %}<span class="slang-count">×{{ s.count }}</span>{% endif %}
+        </dt>
+        <dd class="slang-meaning">
+          {{ s.meaning or '—' }}
+          {% if s.url %}<a class="slang-src" href="{{ s.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+        </dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </div>
+  {% endif %}
 </section>
 
 {# ====================== CHAPTER VI — 团队氛围 ====================== #}

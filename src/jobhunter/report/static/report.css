@@ -1,4 +1,4 @@
-/* jobHunter report v0.1.5 — editorial terminal hybrid
+/* jobHunter report v0.1.6 — editorial terminal hybrid
  * Palette: 纯白纸张 + 暖米白深色块 + 暗酒红 / 焦糖点缀
  * Typography: Cormorant Garamond (display), IBM Plex Sans (body), IBM Plex Mono (data)
  * Embedded via Jinja2; single-file portability.
@@ -420,6 +420,97 @@ h1.display, h2.display {
   color: var(--accent);
   font-weight: 700;
   padding-top: 2px;
+}
+
+/* ---------- Slang glossary (网络词解读) ---------- */
+
+.slang-glossary {
+  margin-top: 28px;
+  padding: 18px 22px;
+  background: var(--paper-deep);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.slang-glossary-head {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: baseline;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--rule);
+  margin-bottom: 14px;
+}
+.slang-glossary-num {
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--accent);
+  line-height: 1;
+  font-style: italic;
+}
+.slang-glossary-title {
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1;
+}
+.slang-glossary-dek {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.slang-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px 28px;
+}
+.slang-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 6px 0;
+}
+.slang-term {
+  margin: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.slang-word {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+}
+.slang-count {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+.slang-meaning {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.slang-src {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--ink-faint);
+}
+.slang-src:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .chapter-grid {

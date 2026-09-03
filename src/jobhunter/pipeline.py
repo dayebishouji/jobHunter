@@ -19,6 +19,7 @@ from jobhunter.llm import (
     LLMClient,
     extract_tool_spec,
     list_company_aliases,
+    list_workplace_slang,
 )
 from jobhunter.llm.client import safe_dumps
 from jobhunter.models.facts import (
@@ -88,6 +89,20 @@ async def run(
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("alias generation failed: %s", e)
+
+    # Generate colloquial / slang search terms (内卷 / ICU / 摆烂 / PUA …) to
+    # widen reviews-domain recall beyond literal "加班 / 薪资" queries. Same
+    # best-effort posture — failure just means the run searches with literal
+    # terms only.
+    if not query.slang_queries:
+        try:
+            query = query.model_copy(
+                update={"slang_queries": await list_workplace_slang(
+                    llm, query.company, query.position
+                )}
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("slang query generation failed: %s", e)
 
     async with make_client() as http:
         collectors = build_all(settings, tavily=tavily, http=http)
