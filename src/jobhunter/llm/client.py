@@ -94,6 +94,7 @@ class LLMClient:
         tool_description: str,
         tool_schema: dict[str, Any],
         model: str | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
         """Send the user message, force the named tool call, and return the parsed input dict.
 
@@ -106,7 +107,7 @@ class LLMClient:
 
         kwargs = dict(
             model=model or self._settings.model,
-            max_tokens=self._settings.max_tokens_per_call,
+            max_tokens=max_tokens or self._settings.max_tokens_per_call,
             system=system,
             tools=[
                 {
@@ -135,7 +136,14 @@ class LLMClient:
             if getattr(block, "type", None) == "tool_use":
                 return block.input
 
-        logger.warning("No tool_use block in response for %s; returning empty", tool_name)
+        # Some ccswitch / relay responses lose tool_use blocks. Surface what we
+        # actually got so the user can diagnose (e.g., relay returned text instead).
+        block_types = [getattr(b, "type", "?") for b in response.content]
+        stop_reason = getattr(response, "stop_reason", "?")
+        logger.warning(
+            "No tool_use block for %s (got block types=%s, stop_reason=%s); returning empty",
+            tool_name, block_types, stop_reason,
+        )
         return {}
 
 

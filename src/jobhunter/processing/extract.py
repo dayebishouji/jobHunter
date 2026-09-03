@@ -116,6 +116,9 @@ async def consolidate(
         tool_name=spec["name"],
         tool_description=spec["description"],
         tool_schema=spec["input_schema"],
+        # Bump output budget — the consolidation writes a sizable inferences list
+        # (each with grounding_evidence URLs) and easily exceeds the default 4K.
+        max_tokens=8000,
     )
     if not raw:
         # Best-effort: stub from raw inputs

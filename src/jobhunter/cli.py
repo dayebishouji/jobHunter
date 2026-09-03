@@ -24,8 +24,24 @@ from jobhunter.config import load_settings
 from jobhunter.models.query import CompanyQuery
 from jobhunter.pipeline import ReportArtifacts, run
 
-console = Console()
-err_console = Console(stderr=True)
+
+def _force_utf8_stdio() -> None:
+    """Chinese Windows defaults to GBK codec which crashes on Rich's spinner
+    Unicode chars (U+2834 braille pattern, etc.). Reconfigure stdout/stderr to
+    UTF-8 with 'replace' fallback before any Rich object is constructed.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except (AttributeError, OSError, ValueError):
+            pass
+
+
+_force_utf8_stdio()
+
+# legacy_windows=False keeps Rich from using the GBK-failing Windows console renderer
+console = Console(legacy_windows=False)
+err_console = Console(stderr=True, legacy_windows=False)
 
 
 def _setup_logging() -> None:
@@ -199,7 +215,14 @@ def run_cmd(
                 run(q, output_dir=output, open_browser=False)
             )
         except Exception as e:  # noqa: BLE001
-            err_console.print(f"[red]失败：[/red]{e}")
+            # Rich's Windows legacy renderer can UnicodeEncodeError on GBK consoles
+            # when flushing buffered error text. Fall back to plain print so the
+            # user always sees what went wrong.
+            msg = f"失败：{e}"
+            try:
+                err_console.print(f"[red]{msg}[/red]")
+            except (UnicodeEncodeError, UnicodeError):  # noqa: PERF203
+                print(msg, file=sys.stderr)
             raise click.exceptions.Exit(code=1)
         progress.update(task, description="完成")
 
