@@ -371,6 +371,37 @@ class NewsItem(BaseModel):
     title: str
     summary: str = ""
     published_at: str | None = None  # ISO string; do not over-parse
+
+    @field_validator("published_at", mode="before")
+    @classmethod
+    def _coerce_published_at(cls, v):
+        """LLM sometimes returns dates as date / datetime objects, None, or
+        loose strings like '2024 年 5 月'. Coerce parseable dates to ISO
+        YYYY-MM-DD; otherwise drop to None."""
+        if v is None:
+            return None
+        if hasattr(v, "isoformat"):
+            try:
+                return v.isoformat()[:10]
+            except Exception:  # noqa: BLE001
+                return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip()
+        if not s or s in ("未知", "未知", "?", "无", "约"):
+            return None
+        # Strip Chinese date markers
+        import re
+        m = re.search(r"(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})", s)
+        if m:
+            y, mo, d = m.groups()
+            return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+        m2 = re.search(r"(\d{4})[-/.年](\d{1,2})", s)
+        if m2:
+            y, mo = m2.groups()
+            return f"{int(y):04d}-{int(mo):02d}-01"
+        return s  # leave it as-is and let downstream try
+
     url: HttpUrl
 
 

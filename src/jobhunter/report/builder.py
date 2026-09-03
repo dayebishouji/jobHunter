@@ -14,6 +14,7 @@ from jobhunter.report.charts import (
     case_year_buckets,
     funding_stage_position,
     news_items_for_timeline,
+    news_timeline_svg,
     overtime_distribution,
     radar_svg,
     salary_distribution,
@@ -161,6 +162,61 @@ _TIER_LABEL = {
     "multi-domain":  ("跨域印证", "tier-multi"),
 }
 
+_CONFIDENCE_LABEL = {
+    "high":   ("数据充足",   "conf-high"),
+    "medium": ("部分缺失",   "conf-medium"),
+    "low":    ("需人工核查", "conf-low"),
+}
+
+
+def compute_diversity_kpi(review_facts, sources) -> dict:
+    """Source-diversity KPI for the hero meta line.
+
+    Aggregates:
+      - total_signals (sum of salary/overtime/turnover/vibe signals)
+      - corroborated_count (tier in {corroborated, multi-domain})
+      - distinct_domains (unique domain roots across all review signals)
+      - tier_distribution (count per tier)
+
+    Used by the 「数据多样性」 pill in the report header.
+    """
+    out = {
+        "total_signals": 0,
+        "corroborated_count": 0,
+        "distinct_domains": set(),
+        "tier_distribution": {"unverified": 0, "single-source": 0, "corroborated": 0, "multi-domain": 0},
+        "tier_label_zh": "—",
+    }
+    if review_facts:
+        out["total_signals"] = (
+            len(review_facts.salary_signals or [])
+            + len(review_facts.overtime_signals or [])
+            + len(review_facts.turnover_signals or [])
+            + len(review_facts.vibe_signals or [])
+        )
+    supports = compute_signal_supports(review_facts) if review_facts else {}
+    for info in supports.values():
+        tier = info.get("support_tier", "unverified")
+        out["tier_distribution"][tier] = out["tier_distribution"].get(tier, 0) + 1
+        out["distinct_domains"].update(info.get("domains", []))
+    out["corroborated_count"] = (
+        out["tier_distribution"].get("corroborated", 0)
+        + out["tier_distribution"].get("multi-domain", 0)
+    )
+    # Copy out — Jinja can't render set
+    out["distinct_domains"] = sorted(out["distinct_domains"])
+    n_dom = len(out["distinct_domains"])
+    n_total = out["total_signals"]
+    if n_total == 0:
+        out["tier_label_zh"] = "无信号"
+    elif n_dom >= 4 and out["corroborated_count"] >= 3:
+        out["tier_label_zh"] = "高"
+    elif n_dom >= 2 and out["corroborated_count"] >= 1:
+        out["tier_label_zh"] = "中"
+    else:
+        out["tier_label_zh"] = "低"
+    return out
+
 
 def build_report(data: ReportData) -> str:
     css = (_STATIC_DIR / "report.css").read_text(encoding="utf-8")
@@ -186,10 +242,18 @@ def build_report(data: ReportData) -> str:
     news_timeline_items = (
         news_items_for_timeline(data.news_facts.items) if data.news_facts else []
     )
+    news_timeline_svg_str = (
+        news_timeline_svg(
+            news_timeline_items,
+            sentiment=data.news_facts.sentiment if data.news_facts else "neutral",
+        )
+        if news_timeline_items else ""
+    )
 
     # Cross-source corroboration for review signals — drives the
     # 「待核实 / 单一来源 / 多源印证 / 跨域印证」tier badge in chapter IV/V/VI.
     signal_supports = compute_signal_supports(data.review_facts)
+    diversity_kpi = compute_diversity_kpi(data.review_facts, sources)
 
     tmpl = _ENV.get_template("report.html.j2")
     return tmpl.render(
@@ -209,7 +273,10 @@ def build_report(data: ReportData) -> str:
         case_timeline_svg=case_timeline,
         funding_stage_pos=funding_pos,
         news_timeline_items=news_timeline_items,
+        news_timeline_svg=news_timeline_svg_str,
         signal_supports=signal_supports,
         tier_label=_TIER_LABEL,
+        diversity_kpi=diversity_kpi,
+        confidence_label=_CONFIDENCE_LABEL,
         favicon_url=_favicon_url,
     )

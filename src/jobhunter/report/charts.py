@@ -503,6 +503,108 @@ def news_items_for_timeline(items) -> list[dict]:
     return enriched
 
 
+def news_timeline_svg(items: list[dict], *, sentiment: str = "neutral",
+                      size_w: int = 760, size_h: int = 96) -> str:
+    """Horizontal SVG timeline of news events across the last N months.
+
+    Each item becomes a colored dot at its publish date; hovering shows the
+    title (native <title>). Month tick marks anchor the axis. Color reflects
+    overall news sentiment (`sentiment` arg) since per-item sentiment is not
+    yet in NewsItem — a per-item sentiment field could be added later.
+    """
+    if not items:
+        return ""
+
+    # Parse dates and filter to items with a real date.
+    from datetime import date as _date
+
+    def _to_date(s: str):
+        if not s or s == "—":
+            return None
+        try:
+            return _date.fromisoformat(s[:10])
+        except (ValueError, TypeError):
+            return None
+
+    dated: list[tuple] = []
+    for it in items:
+        d = _to_date(it.get("when", ""))
+        if d is not None:
+            dated.append((d, it))
+
+    if not dated:
+        return ""
+
+    # Anchor: latest event date (or today if all events are ancient)
+    latest = max(d for d, _ in dated)
+    earliest = min(d for d, _ in dated)
+    span_days = max(1, (latest - earliest).days)
+
+    pad_l, pad_r, pad_t, pad_b = 16, 16, 18, 30
+    inner_w = size_w - pad_l - pad_r
+    inner_y = pad_t + (size_h - pad_t - pad_b) // 2
+
+    color = _PALETTE.get({
+        "positive": "good",
+        "negative": "bad",
+        "mixed": "warn",
+    }.get(sentiment, "neutral"), _PALETTE["ink_soft"])
+    if sentiment == "neutral":
+        color = _PALETTE["ink_faint"]
+
+    def _x(d: _date) -> float:
+        ratio = (d - earliest).days / span_days
+        return pad_l + ratio * inner_w
+
+    parts: list[str] = [
+        f'<svg viewBox="0 0 {size_w} {size_h}" class="news-timeline-svg" '
+        f'xmlns="http://www.w3.org/2000/svg" aria-label="近期新闻时间线">'
+    ]
+    # Baseline
+    parts.append(
+        f'<line x1="{pad_l}" y1="{inner_y}" x2="{size_w - pad_r}" y2="{inner_y}" '
+        f'stroke="{_PALETTE["rule"]}" stroke-width="1.2"/>'
+    )
+    # Month ticks at earliest, mid, latest (3 labels)
+    for label_d, label_txt in [
+        (earliest, earliest.strftime("%Y-%m")),
+        (earliest + (latest - earliest) / 2, ""),
+        (latest, latest.strftime("%Y-%m")),
+    ]:
+        x = _x(label_d)
+        parts.append(
+            f'<text x="{x:.1f}" y="{size_h - 8}" text-anchor="middle" '
+            f'font-family="IBM Plex Mono, monospace" font-size="10" '
+            f'fill="{_PALETTE["ink_soft"]}">{label_txt}</text>'
+        )
+
+    # Stagger dots vertically when same-date collision — naive but cheap.
+    placed: list[float] = []
+    for d, it in dated:
+        x = _x(d)
+        # Vertical offset: alternate up/down based on stacking count at that x
+        stack = sum(1 for px in placed if abs(px - x) < 14)
+        offset_y = -12 if stack % 2 == 0 else 12
+        y = inner_y + offset_y
+        placed.append(x)
+        title_esc = (it.get("title") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        # Native tooltip via <title>
+        parts.append(f"<title>{title_esc}</title>")
+        parts.append(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5" fill="{color}" '
+            f'stroke="{_PALETTE["paper"]}" stroke-width="1.5"/>'
+        )
+        if it.get("url"):
+            url_esc = it["url"].replace("&", "&amp;").replace('"', "&quot;")
+            parts.append(
+                f'<a href="{url_esc}" target="_blank" rel="noopener">'
+                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="9" fill="transparent" '
+                f'pointer-events="all"/></a>'
+            )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 __all__ = [
     "radar_svg",
     "score_ring_svg",

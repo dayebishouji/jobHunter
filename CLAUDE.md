@@ -49,6 +49,13 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - ReviewFacts 现在带 slang_glossary 字段，chapter V 末尾渲染「网络词解读」列表（≤30 字 meaning + count + url）
 - v0.1.7 起 salary/overtime/vibe/turnover 每条 signal 都附 `supporting_urls`，报告 builder 调 `compute_signal_supports` 算 support_tier（unverified / single-source / corroborated / multi-domain），salary 表 / overtime bullets / vibe bullets 旁渲染 tier-badge
 - extract 步 CHARS_CAP 已 50_000（原 25K），`_materialize` 按 Tavily score 降序排，确保高分项不被 slice
+- v0.1.8 起 pipeline 默认跑两轮：round 1 后用 LLM 从 reviews 原材料抽 3-5 个内部实体（产品/品牌/部门/创始人）作为 round 2 reviews 查询的别名；round 2 完成后 `normalize()` 自然 dedup（URL + 标题）；硬上限 1 轮递归 / 5 个实体，避免成本爆炸
+- v0.1.8 起 `_compute_confidence` 返回 per-chapter dict（company/business/judicial/reviews/news + overall），各章标题旁渲染 conf-badge「数据充足 / 部分缺失 / 需人工核查」
+- v0.1.8 起 hero meta 加「数据多样性」KPI：`compute_diversity_kpi` 统计 total_signals / corroborated_count / distinct_domains，并据此标 高/中/低
+- v0.1.8 起 Chapter VII 舆情新增 SVG 时间线（horizontal axis + dots + native `<title>` tooltip），与原 CSS 时间轴并列
+- v0.1.8 起 EXTRACT_REVIEWS_SUFFIX 要求 evidence 字段保留原文引号包裹的关键句（让读者能直接核对原文）
+- NewsFacts._drop_url_missing 只接受 dict（LLM 侧）；model_validate 才能传 list[NewsItem] 实例
+- NewsItem.published_at 加 `_coerce_published_at`：date/datetime → ISO 字符串，宽松中文日期 → YYYY-MM-DD
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 
 ## 下次接手该知道

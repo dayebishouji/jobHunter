@@ -3,6 +3,7 @@
 from jobhunter.llm.client import (
     LLMClient,
     list_company_aliases,
+    list_company_entities,
     list_workplace_slang,
     safe_dumps,
     to_json_schema,
@@ -10,6 +11,7 @@ from jobhunter.llm.client import (
 from jobhunter.llm.prompts import (
     CONSOLIDATE_SYSTEM,
     CONSOLIDATE_USER_TEMPLATE,
+    ENTITY_EXTRACTION_PROMPT,
     EXTRACT_BASE,
     EXTRACT_BUSINESS_SUFFIX,
     EXTRACT_JUDICIAL_SUFFIX,
@@ -23,6 +25,7 @@ from jobhunter.llm.schemas import extract_tool_spec
 __all__ = [
     "CONSOLIDATE_SYSTEM",
     "CONSOLIDATE_USER_TEMPLATE",
+    "ENTITY_EXTRACTION_PROMPT",
     "EXTRACT_BASE",
     "EXTRACT_BUSINESS_SUFFIX",
     "EXTRACT_JUDICIAL_SUFFIX",
@@ -33,6 +36,7 @@ __all__ = [
     "LLMClient",
     "extract_tool_spec",
     "list_company_aliases",
+    "list_company_entities",
     "list_workplace_slang",
     "safe_dumps",
     "to_json_schema",

@@ -45,6 +45,22 @@ _SLANG_SCHEMA: dict[str, Any] = {
     "required": ["slang_queries"],
 }
 
+# Schema used by list_company_entities(). Surfaces internal entity names
+# (products / sub-brands / departments / founders) so round-2 sub-queries can
+# widen recall without drifting off-topic.
+_ENTITIES_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "entities": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "公司内部实体（产品名 / 子品牌 / 部门 / 创始人 / 业务线）",
+            "maxItems": 5,
+        }
+    },
+    "required": ["entities"],
+}
+
 
 class LLMClient:
     """Async Anthropic client with structured-output and budget tracking."""
@@ -258,6 +274,65 @@ async def list_workplace_slang(
             seen.add(t)
             out.append(t)
     return out[:8]
+
+
+async def list_company_entities(
+    llm: "LLMClient",
+    company_name: str,
+    raw_items: list,
+    *,
+    max_items: int = 5,
+) -> list[str]:
+    """Round-2 sub-query seed extraction. Given the first round's raw items
+    (typically reviews), ask LLM to surface 3-5 internal entities
+    (产品名 / 子品牌 / 部门 / 创始人 / 业务线) strictly belonging to *company_name*.
+
+    These become aliases for a second round of reviews queries — the goal is
+    to widen recall for niche teams / products that 打工人 reference by an
+    internal name rather than the company name itself (e.g. 「菜鸟」「钉钉」).
+
+    Returns [] on failure or budget exhaustion. The caller is expected to
+    further filter against already-known aliases (e.g. remove duplicates).
+    """
+    from jobhunter.processing.extract import _materialize
+    from jobhunter.llm.prompts import ENTITY_EXTRACTION_PROMPT
+
+    if not company_name.strip() or not raw_items:
+        return []
+    # Use a tight slice — entity extraction only needs the top hits, not
+    # the full 50K materialization. 8K is plenty for the LLM to spot names.
+    snippet = _materialize(raw_items[:30])[:8000]
+    raw = await llm.structured_call(
+        system=ENTITY_EXTRACTION_PROMPT.format(company=company_name),
+        user=f"原始资料：\n\n{snippet}",
+        tool_name="list_company_entities",
+        tool_description="从原材料抽取公司内部实体（产品/品牌/部门/创始人）",
+        tool_schema=_ENTITIES_SCHEMA,
+    )
+    # Fallback: ccswitch / Anthropic relay sometimes returns plain text instead
+    # of a tool_use block. Try to parse {"entities": [...]} from the text.
+    if not raw and isinstance(llm, object):
+        try:
+            text = await llm.chat(
+                system=ENTITY_EXTRACTION_PROMPT.format(company=company_name),
+                user=f"原始资料：\n\n{snippet}\n\n只返回 JSON: {{\"entities\": [...]}}",
+            )
+            import re as _re
+            m = _re.search(r"\{.*?\}", text, _re.DOTALL)
+            if m:
+                raw = json.loads(m.group(0))
+        except Exception:  # noqa: BLE001 - best-effort
+            pass
+    if not raw or not isinstance(raw.get("entities"), list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for e in raw["entities"]:
+        t = str(e).strip()
+        if t and t not in seen and t != company_name and 2 <= len(t) <= 12:
+            seen.add(t)
+            out.append(t)
+    return out[:max_items]
 
 
 def safe_dumps(d: dict[str, Any]) -> str:

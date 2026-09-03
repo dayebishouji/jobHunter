@@ -6,6 +6,15 @@
 <title>反向背调 · {{ data.query.company }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+{# === Macro: render per-chapter confidence badge near chapter title === #}
+{% macro conf_badge(chapter_key) -%}
+  {% set c = data.chapter_confidence.get(chapter_key) %}
+  {% if c and confidence_label and c != 'high' %}
+    {% set label, cls = confidence_label.get(c, (c, 'conf-low')) %}
+    <span class="conf-badge {{ cls }}" title="该章数据置信度（高=原始材料+结构化信号均有；中=两者之一；低=缺）">{{ label }}</span>
+  {% endif %}
+{%- endmacro %}
 <link rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;700&display=swap" />
 <style>{{ css | safe }}</style>
@@ -46,6 +55,12 @@
       </span>
       <span><span class="meta-key">来源</span>
         <span class="meta-val mono">{{ sources|length }} 条</span>
+      </span>
+      <span><span class="meta-key">数据多样性</span>
+        {% set dk = diversity_kpi %}
+        <span class="pill {{ 'high' if dk.tier_label_zh == '高' else ('medium' if dk.tier_label_zh == '中' else 'low') }}" title="{{ dk.corroborated_count }} 条多源印证 / {{ dk.distinct_domains|length }} 个独立域 / {{ dk.total_signals }} 条 signal">
+          {{ dk.tier_label_zh }} · {{ dk.corroborated_count }}/{{ dk.total_signals }} 印证
+        </span>
       </span>
     </div>
 
@@ -110,7 +125,7 @@
   <header class="chapter-head">
     <div class="chapter-num">I<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">公司画像</h2>
+      <h2 class="chapter-title">公司画像 {{ conf_badge('company') }}</h2>
       <p class="chapter-dek">主营业务、产品矩阵、融资轨迹与前景——读懂这家公司是谁</p>
     </div>
   </header>
@@ -251,7 +266,7 @@
   <header class="chapter-head">
     <div class="chapter-num">II<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">工商基本面</h2>
+      <h2 class="chapter-title">工商基本面 {{ conf_badge('business') }}</h2>
       <p class="chapter-dek">法人、注册资本、经营状态、股权结构——法律登记视角</p>
     </div>
   </header>
@@ -309,7 +324,7 @@
   <header class="chapter-head">
     <div class="chapter-num">III<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">司法风险</h2>
+      <h2 class="chapter-title">司法风险 {{ conf_badge('judicial') }}</h2>
       <p class="chapter-dek">诉讼、被执行——是历史欠账还是经营常态</p>
     </div>
   </header>
@@ -347,7 +362,7 @@
   <header class="chapter-head">
     <div class="chapter-num">IV<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">薪酬与福利</h2>
+      <h2 class="chapter-title">薪酬与福利 {{ conf_badge('reviews') }}</h2>
       <p class="chapter-dek">base / 月数 / 奖金——钱给得如何,数字说了算</p>
     </div>
   </header>
@@ -406,7 +421,7 @@
   <header class="chapter-head">
     <div class="chapter-num">V<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">加班与工作强度</h2>
+      <h2 class="chapter-title">加班与工作强度 {{ conf_badge('reviews') }}</h2>
       <p class="chapter-dek">节奏模式与强度——一周到底要花多少小时在这家公司</p>
     </div>
   </header>
@@ -481,7 +496,7 @@
   <header class="chapter-head">
     <div class="chapter-num">VI<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">团队氛围与文化</h2>
+      <h2 class="chapter-title">团队氛围与文化 {{ conf_badge('reviews') }}</h2>
       <p class="chapter-dek">评价里的情绪倾向——一线员工的真实体感</p>
     </div>
   </header>
@@ -559,7 +574,7 @@
   <header class="chapter-head">
     <div class="chapter-num">Ⅶ<span class="slash">/</span><span class="total">Ⅷ</span></div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">近期舆情</h2>
+      <h2 class="chapter-title">近期舆情 {{ conf_badge('news') }}</h2>
       <p class="chapter-dek">最近的新闻与公开信号——公司在公众眼中什么样</p>
     </div>
   </header>
@@ -576,6 +591,12 @@
       {% if n.source_urls %} · 覆盖 {{ n.source_urls|length }} 个来源{% endif %}
     </div>
   </div>
+
+  {% if news_timeline_svg %}
+  <div class="news-timeline-wrap" style="margin-bottom:24px;">
+    {{ news_timeline_svg | safe }}
+  </div>
+  {% endif %}
 
   <div class="timeline">
     {% for it in news_timeline_items[:10] %}

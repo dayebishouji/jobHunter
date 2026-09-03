@@ -19,6 +19,7 @@ from jobhunter.llm import (
     LLMClient,
     extract_tool_spec,
     list_company_aliases,
+    list_company_entities,
     list_workplace_slang,
 )
 from jobhunter.llm.client import safe_dumps
@@ -108,6 +109,44 @@ async def run(
         collectors = build_all(settings, tavily=tavily, http=http)
         results = await asyncio.gather(*(c.safe_collect(query) for c in collectors))
 
+    # ---------- Round 2: recursive sub-query via LLM-extracted internal entities ----------
+    # After the first round of reviews hits land, ask the LLM to surface internal
+    # entities (products / sub-brands / departments / founders) that 打工人 reference
+    # instead of the company name. Use these as aliases for a second reviews pass
+    # — close the loop between "raw text" and "search seed" without any new
+    # external dependency. Hard caps (max 5 entities, max 1 recursive round) keep
+    # cost bounded; URL + title dedup happens naturally in `normalize()` below.
+    if llm.budget_ok():
+        try:
+            reviews_items: list = []
+            for r in results:
+                if not r.error and r.domain == "reviews":
+                    reviews_items.extend(r.items)
+            if reviews_items:
+                entities = await list_company_entities(
+                    llm, query.company, reviews_items, max_items=5
+                )
+                known = {query.company, *(query.aliases or [])}
+                fresh = [e for e in entities if e not in known]
+                if fresh:
+                    logger.info(
+                        "round 2: extracted %d entities, running sub-queries: %s",
+                        len(fresh), fresh,
+                    )
+                    sub_query = query.model_copy(update={"aliases": fresh})
+                    async with make_client() as http:
+                        sub_collectors = build_all(settings, tavily=tavily, http=http)
+                        sub_results = await asyncio.gather(
+                            *(c.safe_collect(sub_query) for c in sub_collectors)
+                        )
+                    results = list(results) + list(sub_results)
+                else:
+                    logger.info("round 2: no fresh entities after dedup; skipping sub-query")
+            else:
+                logger.info("round 2: no reviews items in round 1; skipping sub-query")
+        except Exception as e:  # noqa: BLE001 - best-effort, never block the run
+            logger.warning("recursive sub-query failed: %s", e)
+
     by_domain = normalize(results)
 
     facets = await extract_all_domains(llm, by_domain)
@@ -131,7 +170,8 @@ async def run(
             notes.append(n)
 
     axes = compute_axes(findings, by_domain, notes)
-    overall_confidence = _compute_confidence(by_domain, findings)
+    chapter_confidence = _compute_confidence(by_domain, findings)
+    overall_confidence = chapter_confidence.get("overall", "low")
 
     interview_questions = await _gen_interview_questions(
         llm, query, axes, findings
@@ -150,6 +190,7 @@ async def run(
         interview_questions=interview_questions,
         data_gaps=findings.data_gaps,
         overall_confidence=overall_confidence,
+        chapter_confidence=chapter_confidence,
     )
 
     html = build_report(data)
@@ -178,18 +219,27 @@ async def run(
 def _compute_confidence(
     by_domain: dict[str, list],
     findings: AggregatedFindings | None,
-) -> Literal["high", "medium", "low"]:
-    have_business = bool(by_domain.get("business")) or (findings is not None and findings.business is not None)
+) -> dict[str, Literal["high", "medium", "low"]]:
+    """Per-chapter confidence bucket.
+
+    Each domain gets its own high/medium/low based on whether raw items landed
+    AND whether extract pulled structured signal out of them. A chapter is
+    'high' only when both are true. 'medium' when one is true. 'low' otherwise.
+
+    The function also returns an overall key (sum-based legacy behavior) for
+    the hero ring badge.
+    """
     reviews = findings.reviews if findings else None
-    have_reviews = bool(by_domain.get("reviews")) or (
-        reviews is not None and (reviews.salary_signals or reviews.vibe_signals or reviews.overtime_signals)
-    )
     news = findings.news if findings else None
-    have_news = bool(by_domain.get("news")) or (news is not None and bool(news.items))
-    have_judicial = bool(by_domain.get("judicial")) or (
-        findings is not None and findings.judicial is not None
-    )
-    have_company_profile = bool(by_domain.get("company_info")) or (
+
+    def _bucket(have_raw: bool, have_struct: bool) -> Literal["high", "medium", "low"]:
+        if have_raw and have_struct:
+            return "high"
+        if have_raw or have_struct:
+            return "medium"
+        return "low"
+
+    have_company_struct = (
         findings is not None
         and findings.company_profile is not None
         and (
@@ -198,12 +248,50 @@ def _compute_confidence(
             or findings.company_profile.products
         )
     )
-    n = sum([have_business, have_reviews, have_news, have_judicial, have_company_profile])
-    if n >= 4:
-        return "high"
-    if n >= 3:
-        return "medium"
-    return "low"
+    have_business_struct = (
+        findings is not None
+        and findings.business is not None
+        and (
+            findings.business.legal_rep
+            or findings.business.status
+            or findings.business.registered_capital
+        )
+    )
+    have_reviews_struct = (
+        reviews is not None
+        and (reviews.salary_signals or reviews.vibe_signals or reviews.overtime_signals)
+    )
+    have_news_struct = news is not None and bool(news.items)
+    have_judicial_struct = (
+        findings is not None
+        and findings.judicial is not None
+        and (findings.judicial.case_count_total is not None or findings.judicial.sample_cases)
+    )
+
+    per = {
+        "company": _bucket(bool(by_domain.get("company_info")), have_company_struct),
+        "business": _bucket(bool(by_domain.get("business")), have_business_struct),
+        "judicial": _bucket(bool(by_domain.get("judicial")), have_judicial_struct),
+        "reviews": _bucket(bool(by_domain.get("reviews")), have_reviews_struct),
+        "news": _bucket(bool(by_domain.get("news")), have_news_struct),
+    }
+
+    # Overall = sum-of-buckets score (high=2, medium=1, low=0). Legacy behavior
+    # was "≥4 of 5 domains have something → high"; preserve the same user-visible
+    # semantics by mapping the same richness to high/medium/low.
+    score = (per["company"] == "high") * 2 + (per["company"] == "medium") \
+          + (per["business"] == "high") * 2 + (per["business"] == "medium") \
+          + (per["judicial"] == "high") * 2 + (per["judicial"] == "medium") \
+          + (per["reviews"] == "high") * 2 + (per["reviews"] == "medium") \
+          + (per["news"] == "high")    * 2 + (per["news"] == "medium")
+    if score >= 8:
+        overall: Literal["high", "medium", "low"] = "high"
+    elif score >= 5:
+        overall = "medium"
+    else:
+        overall = "low"
+    per["overall"] = overall
+    return per
 
 
 async def _gen_interview_questions(

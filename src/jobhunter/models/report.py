@@ -40,4 +40,9 @@ class ReportData(BaseModel):
     interview_questions: list[str] = Field(default_factory=list)
     sources: list[SourceEntry] = Field(default_factory=list)
     overall_confidence: Confidence = "low"
+    # Per-chapter confidence (company / business / judicial / reviews / news + overall)
+    # Drives the small 「数据充足 / 部分缺失 / 需人工核查」badge next to each
+    # chapter title. Computed from whether raw items landed AND extract pulled
+    # structured signal out of them.
+    chapter_confidence: dict[str, Confidence] = Field(default_factory=dict)
     data_gaps: list[str] = Field(default_factory=list)
