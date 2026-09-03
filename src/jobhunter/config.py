@@ -11,14 +11,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Runtime configuration.
 
-    All fields can be overridden via environment variables (with the JOBHUNTER_ prefix)
-    or via a local .env file at the project root.
+    All fields can be overridden via environment variables or via a local
+    .env file at the project root (bare KEY=... convention; case-insensitive).
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="JOBHUNTER_",
+        # No env_prefix — .env files use bare KEY=... convention (ANTHROPIC_API_KEY, TAVILY_API_KEY)
+        # which is the standard documented in .env.example. Setting a prefix here would force
+        # users to write JOBHUNTER_ANTHROPIC_API_KEY in .env, which is unexpected.
         env_file=".env",
         env_file_encoding="utf-8",
+        case_sensitive=False,
         extra="ignore",
     )
 
