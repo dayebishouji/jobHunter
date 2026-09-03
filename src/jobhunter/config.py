@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     )
 
     anthropic_api_key: str = Field(default="", description="Anthropic API key (required)")
+    anthropic_base_url: str = Field(default="", description="Custom Anthropic endpoint (for ccswitch / relay proxies)")
     tavily_api_key: str = Field(default="", description="Tavily API key (required)")
 
     model: str = Field(default="claude-sonnet-4-5", description="Claude model id")

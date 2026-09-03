@@ -25,7 +25,10 @@ class LLMClient:
         if not settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is required")
         self._settings = settings
-        self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        kwargs: dict[str, Any] = {"api_key": settings.anthropic_api_key}
+        if settings.anthropic_base_url:
+            kwargs["base_url"] = settings.anthropic_base_url
+        self._client = anthropic.AsyncAnthropic(**kwargs)
         self._tokens_in = 0
         self._tokens_out = 0
         self._budget_blocked = False
