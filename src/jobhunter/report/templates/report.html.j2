@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>公司反向背调 · {{ data.query.company }}</title>
+<style>{{ css | safe }}</style>
+</head>
+<body>
+<div class="container">
+
+  {# ---------- Header ---------- #}
+  <header class="hero">
+    <h1>反向背调报告 · {{ data.query.company }}<span class="pill {{ data.overall_confidence }}">{{ {'high':'高置信','medium':'中等置信','low':'低置信'}[data.overall_confidence] }}</span></h1>
+    <div class="meta">生成于 {{ data.generated_at.strftime('%Y-%m-%d %H:%M') }} · jobHunter v0.1</div>
+    <div class="target">
+      岗位：{{ data.query.position or '—' }} · 城市：{{ data.query.city or '—' }}
+    </div>
+  </header>
+
+  {# ---------- 5-axis overview ---------- #}
+  <section class="axes">
+    {% for ax in data.axes %}
+    <div class="axis">
+      <h3>{{ ax.label_zh }}</h3>
+      <div class="stars">
+        {% for n in range(1, 6) %}
+          {% if n <= ax.stars %}
+            <span class="star {{ ax.color }}">★</span>
+          {% else %}
+            <span class="star none">★</span>
+          {% endif %}
+        {% endfor %}
+        <span style="font-size:12px;color:var(--muted);margin-left:6px;">{{ ax.stars }}/5</span>
+      </div>
+      <div class="rationale">{{ ax.rationale }}</div>
+    </div>
+    {% endfor %}
+  </section>
+
+  {# ---------- Data gaps (if any) ---------- #}
+  {% if data.data_gaps %}
+  <details open>
+    <summary>数据缺口</summary>
+    <div class="section-body">
+      {% for g in data.data_gaps %}
+      <div class="data-gap">⚠ {{ g }}</div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {# ---------- Business basics ---------- #}
+  <details>
+    <summary>工商基本面</summary>
+    <div class="section-body">
+      {% set b = data.business_facts %}
+      {% if not b %}
+        <p class="empty">未能获取工商数据。建议人工到 gsxt.gov.cn 与 启信宝/天眼查 核查"{{ data.query.company }}"的法人、注册资本、经营状态、是否经营异常。</p>
+      {% else %}
+        <table>
+          <tr><th>法人</th><td>{{ b.legal_rep or '—' }}</td></tr>
+          <tr><th>成立日期</th><td>{{ b.established_at or '—' }}</td></tr>
+          <tr><th>注册资本</th><td>{{ b.registered_capital or '—' }}</td></tr>
+          {% if b.paid_in_capital %}
+          <tr><th>实缴资本</th><td>{{ b.paid_in_capital }}</td></tr>
+          {% endif %}
+          <tr><th>经营状态</th><td>{{ b.status or '—' }}</td></tr>
+          {% if b.address %}<tr><th>注册地址</th><td>{{ b.address }}</td></td></tr>{% endif %}
+          {% if b.scope %}<tr><th>经营范围</th><td>{{ b.scope }}</td></tr>{% endif %}
+          {% if b.anomaly_listed %}
+          <tr><th>经营异常</th><td style="color:var(--bad);">已列入经营异常名录</td></tr>
+          {% endif %}
+        </table>
+        {% if b.top_shareholders %}
+        <h4 style="margin-top:14px;font-size:13px;">主要股东</h4>
+        <table>
+          <thead><tr><th>股东</th><th>持股</th><th>出资</th></tr></thead>
+          <tbody>
+            {% for s in b.top_shareholders %}
+            <tr>
+              <td>{{ s.name }}</td>
+              <td>{{ '{:.0%}'.format(s.stake_pct/100) if s.stake_pct is not none else '—' }}</td>
+              <td>{{ s.contribution or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      {% endif %}
+    </div>
+  </details>
+
+  {# ---------- Judicial risk ---------- #}
+  <details>
+    <summary>司法风险</summary>
+    <div class="section-body">
+      {% set j = data.judicial_facts %}
+      {% if not j %}
+        <p class="empty">司法数据源在本次抓取中未能取得。建议人工到 <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">wenshu.court.gov.cn</a> 和 <a href="https://zxgk.court.gov.cn/" target="_blank" rel="noopener">zxgk.court.gov.cn</a> 核查「{{ data.query.company }}」涉诉与被执行记录。</p>
+      {% else %}
+        <table>
+          <tr><th>累计案件数</th><td>{{ j.case_count_total or '—' }}</td></tr>
+          <tr><th>近一年案件数</th><td>{{ j.case_count_recent_year or '—' }}</td></tr>
+          <tr><th>被执行记录</th><td>{{ j.enforcement_records or 0 }} 条</td></tr>
+        </table>
+        {% if j.sample_cases %}
+        <h4 style="margin-top:14px;font-size:13px;">样本案件</h4>
+        <ul class="bullets">
+          {% for c in j.sample_cases %}
+          <li>
+            <strong>{{ c.title }}</strong> · {{ c.role }}{% if c.year %} · {{ c.year }}{% endif %}
+            {% if c.url %} · <a href="{{ c.url }}" target="_blank" rel="noopener">链接</a>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      {% endif %}
+    </div>
+  </details>
+
+  {# ---------- Salary & benefits ---------- #}
+  <details>
+    <summary>薪酬与福利</summary>
+    <div class="section-body">
+      {% set r = data.review_facts %}
+      {% if not r or not r.salary_signals %}
+        <p class="empty">暂无薪酬爆料。可在看准网 / 脉脉 / 牛客 / 一亩三分地 搜索 "{{ data.query.company }}"。</p>
+      {% else %}
+        <table>
+          <thead><tr><th>岗位</th><th>月base (K)</th><th>奖金 (月)</th><th>证据</th><th>来源</th></tr></thead>
+          <tbody>
+            {% for s in r.salary_signals %}
+            <tr>
+              <td>{{ s.position or '—' }}</td>
+              <td>{{ '%.1f'|format(s.base_monthly_k) if s.base_monthly_k is not none else '—' }}</td>
+              <td>{{ s.bonus_months if s.bonus_months is not none else '—' }}</td>
+              <td style="font-size:12px;color:var(--muted);">{{ s.evidence }}</td>
+              <td>{% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">链接</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  </details>
+
+  {# ---------- Overtime & work intensity ---------- #}
+  <details>
+    <summary>加班与工作强度</summary>
+    <div class="section-body">
+      {% set r = data.review_facts %}
+      {% if not r or not r.overtime_signals %}
+        <p class="empty">暂无加班节奏信号。</p>
+      {% else %}
+        <ul class="bullets">
+          {% for o in r.overtime_signals %}
+          <li>
+            <strong>{{ o.pattern }}</strong> · 强度：{{ o.intensity }}
+            {% if o.url %} · <a href="{{ o.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;">{{ o.evidence }}</div>
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </details>
+
+  {# ---------- Team vibe ---------- #}
+  <details>
+    <summary>团队氛围与文化</summary>
+    <div class="section-body">
+      {% set r = data.review_facts %}
+      {% if not r or not r.vibe_signals %}
+        <p class="empty">暂无直接氛围信号。</p>
+      {% else %}
+        <ul class="bullets">
+          {% for v in r.vibe_signals %}
+          <li>
+            <strong style="color:var(--{{ 'good' if v.sentiment=='positive' else 'bad' if v.sentiment=='negative' else 'warn' }});">{{ {'positive':'正面','negative':'负面','mixed':'混合','neutral':'中性'}[v.sentiment] }}</strong>
+            {% if v.url %} · <a href="{{ v.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+            <div style="font-size:12px;color:var(--muted);margin-top:4px;">{{ v.evidence }}</div>
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </details>
+
+  {# ---------- JD vs reality ---------- #}
+  {% set r = data.review_facts %}
+  {% if r and r.jd_gap_signals %}
+  <details>
+    <summary>岗位真实情况 vs 招聘 JD</summary>
+    <div class="section-body">
+      <ul class="bullets">
+        {% for j in r.jd_gap_signals %}
+        <li>
+          <strong>JD 承诺：</strong>{{ j.jd_promise }}<br/>
+          <strong>实际：</strong>{{ j.reality }}
+          {% if j.url %} · <a href="{{ j.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </details>
+  {% endif %}
+
+  {# ---------- Recent news ---------- #}
+  <details>
+    <summary>近期舆情</summary>
+    <div class="section-body">
+      {% set n = data.news_facts %}
+      {% if not n or not n.items %}
+        <p class="empty">暂无近期舆情。</p>
+      {% else %}
+        <p style="font-size:13px;color:var(--muted);">整体情感倾向：<strong>{{ {'positive':'偏正面','negative':'偏负面','mixed':'混合','neutral':'中性'}[n.sentiment] }}</strong></p>
+        <ul class="bullets">
+          {% for it in n.items %}
+          <li>
+            <strong>{{ it.title }}</strong>
+            {% if it.published_at %} · <span style="color:var(--muted);font-size:12px;">{{ it.published_at }}</span>{% endif %}
+            {% if it.url %} · <a href="{{ it.url }}" target="_blank" rel="noopener">链接</a>{% endif %}
+            {% if it.summary %}<div style="font-size:12px;color:var(--muted);margin-top:4px;">{{ it.summary }}</div>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </details>
+
+  {# ---------- Interview questions ---------- #}
+  {% if data.interview_questions %}
+  <details open>
+    <summary>面试反问清单</summary>
+    <div class="section-body">
+      {% for q in data.interview_questions %}
+      <div class="interview-q">{{ q }}</div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {# ---------- LLM inferences ---------- #}
+  {% if data.findings and data.findings.inferences %}
+  <details>
+    <summary>综合推断（LLM 推断，每条带佐证）</summary>
+    <div class="section-body">
+      <ul class="bullets">
+        {% for inf in data.findings.inferences %}
+        <li>
+          {{ inf.claim }}
+          {% if inf.grounding_evidence %}<a class="inferred-mark" href="{{ inf.grounding_evidence[0] }}" target="_blank" rel="noopener">佐证</a>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </details>
+  {% endif %}
+
+  {# ---------- Sources appendix ---------- #}
+  <details>
+    <summary>数据来源附录（{{ sources|length }} 条）</summary>
+    <div class="section-body">
+      {% if not sources %}
+        <p class="empty">暂无来源链接。</p>
+      {% else %}
+      <ul class="sources-list">
+        {% for s in sources %}
+        <li>
+          <span class="domain">{{ s.domain }}</span>
+          {% if s.title %}<strong>{{ s.title }}</strong> · {% endif %}
+          <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </details>
+
+  <footer class="footnote">
+    本报告由 jobHunter 自动生成，仅供个人求职参考。请独立判断并自行核实关键事实。
+  </footer>
+</div>
+</body>
+</html>
