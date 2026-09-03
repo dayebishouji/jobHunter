@@ -35,6 +35,22 @@ NEWS_DOMAINS: list[str] = [
     "douyin.com",
 ]
 
+# Business registration / company info aggregators (替代 gsxt.gov.cn — 后者在非 CN IP 下不可达)
+BUSINESS_DOMAINS: list[str] = [
+    "aiqicha.baidu.com",
+    "tianyancha.com",
+    "qcc.com",
+    "creditchina.gov.cn",
+]
+
+# Judicial risk / court records (替代 wenshu.court.gov.cn — 同上)
+JUDICIAL_DOMAINS: list[str] = [
+    "wenshu.court.gov.cn",
+    "rmfygg.court.gov.cn",
+    "zxgk.court.gov.cn",
+    "tianyancha.com",
+]
+
 
 def review_queries(q: CompanyQuery) -> list[str]:
     """Generate the set of review-oriented queries for one company."""
@@ -67,4 +83,26 @@ def news_queries(q: CompanyQuery) -> list[str]:
         f'"{c}" 裁员 OR 倒闭 OR 收购',
         f'"{c}" 融资 OR 上市',
         f'"{c}" {year}',
+    ]
+
+
+def business_queries(q: CompanyQuery) -> list[str]:
+    """Business registration / company info queries (aiqicha / tianyancha / qcc / creditchina)."""
+    c = q.company
+    return [
+        f'"{c}" 工商信息',
+        f'"{c}" 法人 注册资本',
+        f'"{c}" 股东 持股比例',
+        f'"{c}" 经营状态 经营异常',
+    ]
+
+
+def judicial_queries(q: CompanyQuery) -> list[str]:
+    """Judicial risk / court records queries."""
+    c = q.company
+    return [
+        f'"{c}" 裁判文书',
+        f'"{c}" 诉讼 OR 起诉',
+        f'"{c}" 被执行',
+        f'"{c}" 失信被执行人',
     ]
