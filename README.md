@@ -78,19 +78,21 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 133 tests
+pytest                        # 168 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.6）
+## 已知限制（v0.1.8）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
-- **Tavily 免费档** 1000 credits / 月，每次完整跑 30–60 credits（v0.1.6 起加 slang 召回额外消耗约 16 个查询）
-- **ccswitch / one-api 中转** LLM 输出偶有 schema 偏差，已通过 `NullTolerantListBase` + per-field 校验器兜底
+- **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
+- **ccswitch / one-api 中转** LLM 输出偶有 schema 偏差，已通过 `NullTolerantListBase` + per-field 校验器兜底；list_company_entities 偶返回纯文本（不走 tool_use），已 fallback 到 chat()+JSON regex
 - **inferences 段** 在 consolidation 输出 token 紧张时可能为空，不影响主功能
 - **公司画像域** 依赖 Tavily 在百度百科 / IT 桔子 / 创业邦的命中；小众公司可能拿不到完整字段，仅展示已抓到的部分
 - **v0.1.6 网络词召回**：依赖 LLM 生成 5–8 个 slang 查询词（内卷 / ICU / 摆烂 / 跑路 …）提升 UGC 召回；抽取后报告 chapter V 末尾会附「网络词解读」列表；如 LLM 失败则跳过
+- **v0.1.8 递归 sub-query**：round 1 后用 LLM 抽 3-5 个公司内部实体（产品/品牌/部门/创始人）作为 round 2 查询别名；硬上限 1 轮 / 5 个实体
+- **v0.1.8 数据多样性 KPI**：每条 signal 旁的 tier-badge（待核实/单一来源/多源印证/跨域印证）+ hero meta 的「数据多样性」pill 反映 cross-source corroboration
 - 不支持：批量多公司、SQLite watchlist、Web 服务、PDF 导出、Playwright（v0.2 候选）
 
 ## 免责
