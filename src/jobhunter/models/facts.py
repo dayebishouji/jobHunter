@@ -297,6 +297,28 @@ class CaseItem(BaseModel):
             return "第三人"
         return "其他"
 
+    @field_validator("year", mode="before")
+    @classmethod
+    def _coerce_year(cls, v):
+        """LLM sometimes returns '2023年' / '约 2024' / '2023-01' for case year.
+        Extract a 4-digit year; otherwise drop to None."""
+        if v is None or isinstance(v, bool):
+            return None if v is None else None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, str):
+            import re
+            m = re.search(r"\b(?:19|20)\d{2}\b", v)
+            if m:
+                return int(m.group())
+            try:
+                return int(float(v.strip().rstrip("年").strip()))
+            except (ValueError, TypeError):
+                return None
+        return None
+
 
 class JudicialFacts(NullTolerantListBase):
     case_count_total: int | None = None

@@ -322,3 +322,21 @@ class TestEnumCoercion:
         from jobhunter.models.facts import CaseItem
         c = CaseItem.model_validate({"title": "X", "role": "被告方"})
         assert c.role == "被告"
+
+    def test_case_year_string_extracted(self):
+        """LLM returns '2023年' / '约 2024' / '2023-01' — extract the 4-digit year."""
+        from jobhunter.models.facts import CaseItem
+        for raw, expected in [
+            ("2023年", 2023),
+            ("约 2024", 2024),
+            ("2023-01", 2023),
+            ("2023", 2023),
+            ("2025.5", 2025),
+        ]:
+            c = CaseItem.model_validate({"title": "X", "year": raw})
+            assert c.year == expected, f"raw={raw!r} got {c.year}"
+
+    def test_case_year_unparseable_becomes_none(self):
+        from jobhunter.models.facts import CaseItem
+        c = CaseItem.model_validate({"title": "X", "year": "未知"})
+        assert c.year is None
