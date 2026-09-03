@@ -28,7 +28,7 @@ class CollectorResult(BaseModel):
     """Result of one collector's run. Never empty — on failure carries `error`."""
 
     collector: str
-    domain: Literal["business", "judicial", "reviews", "news"]
+    domain: Literal["business", "judicial", "reviews", "news", "company_info"]
     company_query: CompanyQuery
     items: list[RawItem] = Field(default_factory=list)
     error: str | None = None

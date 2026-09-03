@@ -100,6 +100,50 @@
     </div>
   </details>
 
+  {# ---------- Company profile (主营业务 / 产品 / 融资 / 规模) ---------- #}
+  <details>
+    <summary>{{ section_icon('公司画像') }} 公司画像</summary>
+    <div class="section-body">
+      {% set cp = data.company_profile %}
+      {% if not cp %}
+        <p class="empty">公司画像数据缺失。可人工到 <a href="https://baike.baidu.com/" target="_blank" rel="noopener">百度百科</a> / <a href="https://www.itjuzi.com/" target="_blank" rel="noopener">IT桔子</a> / <a href="https://www.qcc.com/" target="_blank" rel="noopener">企查查</a> 搜索 "{{ data.query.company }}" 核实主营业务、融资阶段与规模。</p>
+      {% else %}
+        {% if cp.description %}<p style="margin:0 0 10px 0;font-size:13px;color:var(--text);">{{ cp.description }}</p>{% endif %}
+        <table>
+          {% if cp.official_website %}<tr><th>官网</th><td><a href="{{ cp.official_website }}" target="_blank" rel="noopener">{{ cp.official_website }}</a></td></tr>{% endif %}
+          {% if cp.headquarters %}<tr><th>总部</th><td>{{ cp.headquarters }}</td></tr>{% endif %}
+          {% if cp.founded_year %}<tr><th>成立年份</th><td>{{ cp.founded_year }}</td></tr>{% endif %}
+          {% if cp.company_size %}<tr><th>公司规模</th><td>{{ cp.company_size }}</td></tr>{% endif %}
+          {% if cp.funding_stage %}<tr><th>融资阶段</th><td>{{ cp.funding_stage }}{% if cp.total_funding %} · 累计 {{ cp.total_funding }}{% endif %}</td></tr>{% endif %}
+        </table>
+        {% if cp.main_business %}
+        <h4 style="margin-top:14px;font-size:13px;">主营业务</h4>
+        <ul class="bullets">
+          {% for m in cp.main_business %}<li>{{ m }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% if cp.products %}
+        <h4 style="margin-top:14px;font-size:13px;">主要产品 / 产品线</h4>
+        <ul class="bullets">
+          {% for p in cp.products %}<li>{{ p }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% if cp.industries %}
+        <h4 style="margin-top:14px;font-size:13px;">所属行业</h4>
+        <div>{% for ind in cp.industries %}<span class="chip" style="margin-right:6px;">{{ ind }}</span>{% endfor %}</div>
+        {% endif %}
+        {% if cp.investors %}
+        <h4 style="margin-top:14px;font-size:13px;">主要投资方</h4>
+        <div>{% for inv in cp.investors %}<span class="chip" style="margin-right:6px;">{{ inv }}</span>{% endfor %}</div>
+        {% endif %}
+        {% if cp.prospects %}
+        <h4 style="margin-top:14px;font-size:13px;">发展前景</h4>
+        <p style="font-size:13px;color:var(--text);">{{ cp.prospects }}</p>
+        {% endif %}
+      {% endif %}
+    </div>
+  </details>
+
   {# ---------- Judicial risk ---------- #}
   <details>
     <summary>{{ section_icon('司法风险') }} 司法风险</summary>

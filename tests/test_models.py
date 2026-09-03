@@ -9,6 +9,7 @@ import pytest
 from jobhunter.models.facts import (
     AggregatedFindings,
     BusinessFacts,
+    CompanyProfile,
     InferredClaim,
     JudicialFacts,
     NewsFacts,
@@ -347,3 +348,90 @@ class TestEnumCoercion:
         from jobhunter.models.facts import CaseItem
         c = CaseItem.model_validate({"title": "X", "year": "未知"})
         assert c.year is None
+
+
+class TestCompanyProfile:
+    """CompanyProfile distinct from BusinessFacts: qualitative / market positioning."""
+
+    def test_minimal(self):
+        cp = CompanyProfile()
+        assert cp.description is None
+        assert cp.main_business == []
+        assert cp.products == []
+        assert cp.industries == []
+        assert cp.investors == []
+        assert cp.source_urls == []
+        assert cp.founded_year is None
+
+    def test_round_trip(self):
+        cp = CompanyProfile(
+            description="国内最大云厂商",
+            main_business=["云计算", "AI 平台"],
+            products=["ECS", "RDS"],
+            company_size="10000人以上",
+            funding_stage="未融资",
+            headquarters="杭州",
+            prospects="持续布局海外市场",
+        )
+        again = CompanyProfile.model_validate_json(cp.model_dump_json())
+        assert again.description == "国内最大云厂商"
+        assert again.main_business == ["云计算", "AI 平台"]
+        assert again.products == ["ECS", "RDS"]
+        assert again.headquarters == "杭州"
+
+    def test_founded_year_string_with_chinese_extracted(self):
+        """Same regex as CaseItem.year — handle '2014年' / '约 2014' / '2014-09'."""
+        for raw, expected in [
+            ("2014年", 2014),
+            ("约 2015", 2015),
+            ("2010-09", 2010),
+            ("2014", 2014),
+        ]:
+            cp = CompanyProfile.model_validate({"founded_year": raw})
+            assert cp.founded_year == expected, f"raw={raw!r} got {cp.founded_year}"
+
+    def test_founded_year_unparseable_becomes_none(self):
+        cp = CompanyProfile.model_validate({"founded_year": "未知"})
+        assert cp.founded_year is None
+
+    def test_official_website_bare_hostname_normalized(self):
+        """LLM often returns bare 'example.com' — normalize to https://example.com/."""
+        cp = CompanyProfile.model_validate({"official_website": "aliyun.com"})
+        assert str(cp.official_website) == "https://aliyun.com/"
+
+    def test_official_website_with_path_collapsed_to_root(self):
+        cp = CompanyProfile.model_validate({"official_website": "https://aliyun.com/about"})
+        assert str(cp.official_website) == "https://aliyun.com/"
+
+    def test_official_website_empty_becomes_none(self):
+        for bad in ("", "   "):
+            cp = CompanyProfile.model_validate({"official_website": bad})
+            assert cp.official_website is None
+
+    def test_null_lists_become_empty(self):
+        cp = CompanyProfile.model_validate({
+            "main_business": None,
+            "products": None,
+            "industries": None,
+            "investors": None,
+            "source_urls": None,
+        })
+        assert cp.main_business == []
+        assert cp.products == []
+        assert cp.industries == []
+        assert cp.investors == []
+        assert cp.source_urls == []
+
+    def test_aggregated_findings_with_company_profile(self):
+        a = AggregatedFindings(
+            company_query_summary="x",
+            company_profile=CompanyProfile(description="测试", founded_year=2010),
+        )
+        again = AggregatedFindings.model_validate_json(a.model_dump_json())
+        assert again.company_profile is not None
+        assert again.company_profile.description == "测试"
+        assert again.company_profile.founded_year == 2010
+
+    def test_aggregated_findings_company_profile_default_none(self):
+        a = AggregatedFindings.model_validate({})
+        assert a.company_profile is None

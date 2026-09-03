@@ -40,7 +40,7 @@ EXTRACT_JUDICIAL_SUFFIX = (
 
 # ---------- Consolidation ----------
 
-CONSOLIDATE_SYSTEM = """你是企业背调"综合分析师"。下面会提供四个领域已抽取好的结构化事实（工商 / 评价 / 新闻 / 司法）。
+CONSOLIDATE_SYSTEM = """你是企业背调"综合分析师"。下面会提供五个领域已抽取好的结构化事实（工商 / 评价 / 新闻 / 司法 / 公司画像）。
 
 你要做三件事：
 1. **inferences**：基于已抽取事实推出"该求职者在面试/决策中需要关心"的 3-6 条合理推断。每条 inference 必须带"grounding_evidence"——至少 1 个 URL；不允许凭空编造。"inference" 用中文，长度 <= 60 字。
@@ -67,6 +67,9 @@ CONSOLIDATE_USER_TEMPLATE = """公司: {company}
 【司法事实】
 {judicial}
 
+【公司画像（主营业务 / 产品 / 融资 / 规模 / 前景）】
+{company_profile}
+
 请按系统指令输出 inferences / data_gaps / company_query_summary。"""
 
 # ---------- Interview question generation ----------
@@ -91,5 +94,6 @@ INTERVIEW_USER_TEMPLATE = """公司：{company}
 {reviews}
 {news}
 {judicial}
+{company_profile}
 
 请基于以上事实输出 6-10 条面试反问。每条一行，开头不要编号。"""

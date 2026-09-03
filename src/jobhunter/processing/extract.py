@@ -1,4 +1,4 @@
-"""LLM-driven extraction. Four domain calls (concurrency up to 4) + 1 aggregate."""
+"""LLM-driven extraction. Five domain calls (concurrency up to 5) + 1 aggregate."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from jobhunter.llm import (
 from jobhunter.models.facts import (
     AggregatedFindings,
     BusinessFacts,
+    CompanyProfile,
     JudicialFacts,
     NewsFacts,
     ReviewFacts,
@@ -35,6 +36,7 @@ DOMAIN_SUFFIX = {
     "reviews": EXTRACT_REVIEWS_SUFFIX,
     "news": EXTRACT_NEWS_SUFFIX,
     "judicial": EXTRACT_JUDICIAL_SUFFIX,
+    "company_info": "",
 }
 
 MODEL_BY_DOMAIN: dict[str, type] = {
@@ -42,6 +44,7 @@ MODEL_BY_DOMAIN: dict[str, type] = {
     "reviews": ReviewFacts,
     "news": NewsFacts,
     "judicial": JudicialFacts,
+    "company_info": CompanyProfile,
 }
 
 CHARS_CAP = 25_000  # rough upper bound before passing to LLM
@@ -80,13 +83,15 @@ async def _extract_one_domain(
 async def extract_all_domains(
     llm: LLMClient, by_domain: dict[str, list[RawItem]]
 ) -> dict[str, object]:
-    """Return {'business': BusinessFacts | None, 'reviews': ..., 'news': ..., 'judicial': ...}."""
+    """Return {'business': ..., 'reviews': ..., 'news': ..., 'judicial': ..., 'company_info': ...}."""
     coros = [
         _extract_one_domain(llm, d, by_domain.get(d, []))
-        for d in ("business", "reviews", "news", "judicial")
+        for d in ("business", "reviews", "news", "judicial", "company_info")
     ]
     results = await asyncio.gather(*coros)
-    return {d: r for d, r in zip(("business", "reviews", "news", "judicial"), results)}
+    return {
+        d: r for d, r in zip(("business", "reviews", "news", "judicial", "company_info"), results)
+    }
 
 
 async def consolidate(
@@ -94,12 +99,13 @@ async def consolidate(
     query: CompanyQuery,
     facets: dict[str, object | None],
 ) -> AggregatedFindings | None:
-    """Second-pass consolidation across all four domain extractions."""
+    """Second-pass consolidation across all five domain extractions."""
     spec = extract_tool_spec("aggregate")
     business = facets.get("business")
     reviews = facets.get("reviews")
     news = facets.get("news")
     judicial = facets.get("judicial")
+    company_profile = facets.get("company_info")
 
     user = CONSOLIDATE_USER_TEMPLATE.format(
         company=query.company,
@@ -109,6 +115,7 @@ async def consolidate(
         reviews=safe_dumps(reviews.model_dump(mode="json") if reviews else {}),
         news=safe_dumps(news.model_dump(mode="json") if news else {}),
         judicial=safe_dumps(judicial.model_dump(mode="json") if judicial else {}),
+        company_profile=safe_dumps(company_profile.model_dump(mode="json") if company_profile else {}),
     )
     raw = await llm.structured_call(
         system=CONSOLIDATE_SYSTEM,
@@ -128,6 +135,7 @@ async def consolidate(
             reviews=reviews if isinstance(reviews, ReviewFacts) else None,
             news=news if isinstance(news, NewsFacts) else None,
             judicial=judicial if isinstance(judicial, JudicialFacts) else None,
+            company_profile=company_profile if isinstance(company_profile, CompanyProfile) else None,
             data_gaps=_auto_gaps(facets),
         )
     agg = AggregatedFindings.model_validate(_sanitize_aggregated(raw))
@@ -136,6 +144,9 @@ async def consolidate(
     agg.reviews = agg.reviews or (reviews if isinstance(reviews, ReviewFacts) else None)
     agg.news = agg.news or (news if isinstance(news, NewsFacts) else None)
     agg.judicial = agg.judicial or (judicial if isinstance(judicial, JudicialFacts) else None)
+    agg.company_profile = agg.company_profile or (
+        company_profile if isinstance(company_profile, CompanyProfile) else None
+    )
     if not agg.data_gaps:
         agg.data_gaps = _auto_gaps(facets)
     return agg
@@ -162,7 +173,7 @@ def _sanitize_aggregated(raw: dict) -> dict:
     so the field falls back to its default.
     """
     cleaned = dict(raw)
-    for key in ("business", "reviews", "news", "judicial"):
+    for key in ("business", "reviews", "news", "judicial", "company_profile"):
         v = cleaned.get(key)
         if v is not None and not isinstance(v, dict):
             cleaned[key] = None

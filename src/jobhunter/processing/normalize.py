@@ -24,7 +24,7 @@ def normalize(results: Iterable[CollectorResult]) -> dict[str, list[RawItem]]:
         4. sort each bucket by published_at desc (None goes last)
     """
     by_domain: dict[str, list[RawItem]] = {
-        "business": [], "judicial": [], "reviews": [], "news": []
+        "business": [], "judicial": [], "reviews": [], "news": [], "company_info": []
     }
     for r in results:
         if r.error:

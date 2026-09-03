@@ -10,6 +10,7 @@ from typing import Literal
 from jobhunter.models.facts import (
     AggregatedFindings,
     BusinessFacts,
+    CompanyProfile,
     JudicialFacts,
     NewsFacts,
     ReviewFacts,
@@ -35,6 +36,7 @@ class ReportData(BaseModel):
     review_facts: ReviewFacts | None = None
     news_facts: NewsFacts | None = None
     judicial_facts: JudicialFacts | None = None
+    company_profile: CompanyProfile | None = None
     interview_questions: list[str] = Field(default_factory=list)
     sources: list[SourceEntry] = Field(default_factory=list)
     overall_confidence: Confidence = "low"

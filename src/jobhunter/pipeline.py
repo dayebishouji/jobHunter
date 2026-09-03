@@ -24,6 +24,7 @@ from jobhunter.llm.client import safe_dumps
 from jobhunter.models.facts import (
     AggregatedFindings,
     BusinessFacts,
+    CompanyProfile,
     JudicialFacts,
     NewsFacts,
     ReviewFacts,
@@ -104,6 +105,7 @@ async def run(
             reviews=facets.get("reviews") if isinstance(facets.get("reviews"), ReviewFacts) else None,
             news=facets.get("news") if isinstance(facets.get("news"), NewsFacts) else None,
             judicial=facets.get("judicial") if isinstance(facets.get("judicial"), JudicialFacts) else None,
+            company_profile=facets.get("company_info") if isinstance(facets.get("company_info"), CompanyProfile) else None,
         )
 
     reviews = findings.reviews
@@ -129,6 +131,7 @@ async def run(
         review_facts=findings.reviews,
         news_facts=findings.news,
         judicial_facts=findings.judicial,
+        company_profile=findings.company_profile,
         interview_questions=interview_questions,
         data_gaps=findings.data_gaps,
         overall_confidence=overall_confidence,
@@ -171,10 +174,19 @@ def _compute_confidence(
     have_judicial = bool(by_domain.get("judicial")) or (
         findings is not None and findings.judicial is not None
     )
-    n = sum([have_business, have_reviews, have_news, have_judicial])
-    if n >= 3:
+    have_company_profile = bool(by_domain.get("company_info")) or (
+        findings is not None
+        and findings.company_profile is not None
+        and (
+            findings.company_profile.description
+            or findings.company_profile.main_business
+            or findings.company_profile.products
+        )
+    )
+    n = sum([have_business, have_reviews, have_news, have_judicial, have_company_profile])
+    if n >= 4:
         return "high"
-    if n >= 2:
+    if n >= 3:
         return "medium"
     return "low"
 
@@ -201,6 +213,12 @@ async def _gen_interview_questions(
             snippets["news"] = f"新闻: {len(findings.news.items)} 条, 情感={findings.news.sentiment}"
         if findings.judicial:
             snippets["judicial"] = f"司法: 累计 {findings.judicial.case_count_total}, 被执行 {findings.judicial.enforcement_records}"
+        if findings.company_profile:
+            cp = findings.company_profile
+            snippets["company_profile"] = (
+                f"公司画像: 主营={'/'.join(cp.main_business[:2]) if cp.main_business else '?'}, "
+                f"规模={cp.company_size or '?'}, 融资={cp.funding_stage or '?'}"
+            )
 
     user = INTERVIEW_USER_TEMPLATE.format(
         company=query.company,
@@ -211,6 +229,7 @@ async def _gen_interview_questions(
         reviews=snippets.get("reviews", "评价: 数据缺失"),
         news=snippets.get("news", "新闻: 数据缺失"),
         judicial=snippets.get("judicial", "司法: 数据缺失"),
+        company_profile=snippets.get("company_profile", "公司画像: 数据缺失"),
     )
     text = await llm.chat(system=INTERVIEW_SYSTEM, user=user)
     return parse_interview_lines(text)

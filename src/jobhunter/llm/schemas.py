@@ -6,6 +6,7 @@ from jobhunter.llm.client import LLMClient, to_json_schema
 from jobhunter.models.facts import (
     AggregatedFindings,
     BusinessFacts,
+    CompanyProfile,
     JudicialFacts,
     NewsFacts,
     ReviewFacts,
@@ -34,6 +35,11 @@ _EXTRACT_TOOLS: list[tuple[type, str, str]] = [
         "把原材料里关于该公司涉诉与被执行的司法数据，整理成结构化记录。",
     ),
     (
+        CompanyProfile,
+        "record_company_profile",
+        "把原材料里关于该公司画像（主营业务 / 产品 / 行业 / 融资阶段 / 规模 / 总部 / 发展前景）的信息，整理成结构化记录。",
+    ),
+    (
         AggregatedFindings,
         "record_aggregated_findings",
         "把四个领域的事实合并成综合发现，包括 inferences（合理推断）与 data_gaps（数据缺口）。",
@@ -42,13 +48,14 @@ _EXTRACT_TOOLS: list[tuple[type, str, str]] = [
 
 
 def extract_tool_spec(domain: str) -> dict:
-    """Return one tool-spec dict for a domain ('business'|'reviews'|'news'|'judicial'|'aggregate')."""
+    """Return one tool-spec dict for a domain ('business'|'reviews'|'news'|'judicial'|'company_info'|'aggregate')."""
     key_to_idx = {
         "business": 0,
         "reviews": 1,
         "news": 2,
         "judicial": 3,
-        "aggregate": 4,
+        "company_info": 4,
+        "aggregate": 5,
     }
     idx = key_to_idx[domain]
     _, name, desc = _EXTRACT_TOOLS[idx]

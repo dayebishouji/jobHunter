@@ -43,6 +43,19 @@ BUSINESS_DOMAINS: list[str] = [
     "creditchina.gov.cn",
 ]
 
+# Company profile / encyclopedia / startup database sources
+# (主营业务 / 产品 / 行业 / 融资阶段 / 规模 / 官网 etc.)
+COMPANY_INFO_DOMAINS: list[str] = [
+    "baike.baidu.com",
+    "baike.sogou.com",
+    "itjuzi.com",
+    "cyzone.cn",
+    "pedaily.cn",
+    "36kr.com",
+    "qcc.com",
+    "tianyancha.com",
+]
+
 # Judicial risk / court records (替代 wenshu.court.gov.cn — 同上)
 JUDICIAL_DOMAINS: list[str] = [
     "wenshu.court.gov.cn",
@@ -117,6 +130,17 @@ def judicial_queries(q: CompanyQuery) -> list[str]:
         f'"{c}" 诉讼 OR 起诉',
         f'"{c}" 被执行',
         f'"{c}" 失信被执行人',
+    ]
+
+
+def company_info_queries(q: CompanyQuery) -> list[str]:
+    """Company profile queries (主营业务 / 产品 / 行业 / 融资 / 规模 / 官网)."""
+    c = q.company
+    return [
+        f'"{c}" 公司简介',
+        f'"{c}" 主营业务 产品',
+        f'"{c}" 融资 投资',
+        f'"{c}" 官网',
     ]
 
 

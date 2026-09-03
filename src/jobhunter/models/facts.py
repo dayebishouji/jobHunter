@@ -357,5 +357,70 @@ class AggregatedFindings(NullTolerantListBase):
     reviews: ReviewFacts | None = None
     news: NewsFacts | None = None
     judicial: JudicialFacts | None = None
+    company_profile: "CompanyProfile | None" = None
     inferences: list[InferredClaim] = Field(default_factory=list)
     data_gaps: list[str] = Field(default_factory=list)
+
+
+# ---------- Company profile ----------
+
+class CompanyProfile(NullTolerantListBase):
+    """Structured company-profile facts extracted from encyclopedia / startup
+    databases / aggregator pages. Distinct from BusinessFacts (legal registration)
+    — this captures qualitative info: what the company does, where it's headed,
+    its size/funding."""
+
+    description: str | None = None  # 一句话简介
+    official_website: HttpUrl | None = None
+    main_business: list[str] = Field(default_factory=list)  # 主营业务 / 经营范围概括
+    products: list[str] = Field(default_factory=list)  # 主要产品 / 产品线
+    industries: list[str] = Field(default_factory=list)  # 所属行业
+    company_size: str | None = None  # e.g. "100-500人" / "5000-10000人"
+    founded_year: int | None = None
+    funding_stage: str | None = None  # 天使 / A轮 / B轮 / C轮 / D轮及以上 / 已上市 / 未融资
+    total_funding: str | None = None  # 累计融资额 e.g. "约 5 亿元"
+    investors: list[str] = Field(default_factory=list)
+    headquarters: str | None = None  # 总部所在地
+    prospects: str | None = None  # 发展前景概述（基于新闻 + 财报 + 公开战略）
+    source_urls: list[HttpUrl] = Field(default_factory=list)
+
+    @field_validator("founded_year", mode="before")
+    @classmethod
+    def _coerce_year(cls, v):
+        if v is None or isinstance(v, bool):
+            return None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, str):
+            import re
+            m = re.search(r"\b(?:19|20)\d{2}\b", v)
+            if m:
+                return int(m.group())
+            try:
+                return int(float(v.strip().rstrip("年").strip()))
+            except (ValueError, TypeError):
+                return None
+        return None
+
+    @field_validator("official_website", mode="before")
+    @classmethod
+    def _coerce_website(cls, v):
+        """LLM often returns bare hostnames like 'example.com' (no scheme) or
+        with trailing slashes / paths. Normalize to a real URL or None."""
+        if v is None or v == "":
+            return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip().rstrip("/")
+        if not s:
+            return None
+        if not s.startswith(("http://", "https://")):
+            s = "https://" + s
+        # Drop any path beyond the first segment
+        from urllib.parse import urlparse
+        parsed = urlparse(s)
+        if parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}/"
+        return None
