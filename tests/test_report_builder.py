@@ -37,10 +37,14 @@ def test_render_basic_html_structure():
     assert "TestCorp" in html
     assert "<style>" in html
     assert ":root" in html  # CSS embedded
-    assert "加班强度" in html
+    assert "加班强度" in html  # axis label appears in radar + axis list
     assert "<details>" in html
     assert "薪酬与福利" in html  # at least one of the always-rendered sections
     assert "数据来源附录" in html
+    # New: chart pieces
+    assert "radar-svg" in html
+    assert "score-ring-svg" in html
+    assert "hbar-fill" in html  # overtime bar chart rendered (we have 1 overtime signal)
 
 
 def test_render_with_data_gaps():
