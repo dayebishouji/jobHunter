@@ -40,10 +40,15 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - LLM 偶有 enum 同义词（"在业"→存续 / "重"→high），已加 per-field 校验器
 - LLM 偶对 Optional 子模型字段（business / reviews / judicial / company_profile）返回非 dict 值，`consolidate` 步调 `_sanitize_aggregated` 清洗成 None
 - LLM 偶对数字字段（base_monthly_k / stake_pct / case_count_total / enforcement_records 等）返回中文串 ("约 8 起"、"35%"、"面议")，已加 per-field 校验器把可解析串 coerce 成数字、其余 None
+- LLM 偶把 slang `term` 写成数字 ("996") 或把 `anomaly_listed` 写成 "否/是"、把 `established_at` 写成 "未知/约 2010 年"，已加 `_coerce_term` / `_coerce_bool` / `_coerce_date` 校验器兜底
+- LLM 偶对 `supporting_urls` 返回非 list 值，4 个 signal 模型（Salary/Overtime/Turnover/Vibe）已继承 `NullTolerantListBase` 自动 coerce
+- v0.1.4 起 LLM consolidation 步 `AggregatedFindings.model_validate` 失败会 fallback 到原始 facets（best-effort，不让整个 run 挂掉）
 - consolidation 步 max_tokens 已 8000（默认 4096 不够）
 - 交互模式在 Python 3.14 下用 `loop.run_in_executor` 跑 InquirerPy，绕开嵌套 asyncio.run
 - reviews 域查询会先调一次 LLM 生成公司别名（缩写 / 英文名），别名最多取 3 个；v0.1.6 起再加 slang 召回（5–8 个 2-6 字口语词，如 内卷/ICU/摆烂/跑路/PUA），prompt 明确禁止含公司名
 - ReviewFacts 现在带 slang_glossary 字段，chapter V 末尾渲染「网络词解读」列表（≤30 字 meaning + count + url）
+- v0.1.7 起 salary/overtime/vibe/turnover 每条 signal 都附 `supporting_urls`，报告 builder 调 `compute_signal_supports` 算 support_tier（unverified / single-source / corroborated / multi-domain），salary 表 / overtime bullets / vibe bullets 旁渲染 tier-badge
+- extract 步 CHARS_CAP 已 50_000（原 25K），`_materialize` 按 Tavily score 降序排，确保高分项不被 slice
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 
 ## 下次接手该知道

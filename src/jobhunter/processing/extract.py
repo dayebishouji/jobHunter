@@ -47,12 +47,26 @@ MODEL_BY_DOMAIN: dict[str, type] = {
     "company_info": CompanyProfile,
 }
 
-CHARS_CAP = 25_000  # rough upper bound before passing to LLM
+CHARS_CAP = 50_000  # rough upper bound before passing to LLM (was 25K — bumped
+                # so high-quality reviews items survive truncation; Sonnet 4.5
+                # eats 200K context so this is well within budget)
 
 
 def _materialize(items: list[RawItem]) -> str:
+    """Join items into a numbered, LLM-readable block. Items are sorted by
+    Tavily relevance score (desc) so the highest-quality hits survive the
+    CHARS_CAP slice even when the raw fetch is much larger than the cap.
+    Items without a score are treated as 0 and pushed to the tail.
+    """
+    def _score(it: RawItem) -> float:
+        try:
+            return float((it.payload or {}).get("score") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    ordered = sorted(items, key=_score, reverse=True)
     parts: list[str] = []
-    for i, it in enumerate(items, start=1):
+    for i, it in enumerate(ordered, start=1):
         parts.append(
             f"[{i}] {it.title or '(无标题)'} | {it.source} | {it.url}\n{(it.snippet or '').strip()}"
         )
@@ -138,7 +152,19 @@ async def consolidate(
             company_profile=company_profile if isinstance(company_profile, CompanyProfile) else None,
             data_gaps=_auto_gaps(facets),
         )
-    agg = AggregatedFindings.model_validate(_sanitize_aggregated(raw))
+    try:
+        agg = AggregatedFindings.model_validate(_sanitize_aggregated(raw))
+    except Exception as e:  # noqa: BLE001 - consolidation is best-effort
+        logger.warning("consolidate: AggregatedFindings validation failed (%s); falling back to raw facets", e)
+        agg = AggregatedFindings(
+            company_query_summary=query.display(),
+            business=business if isinstance(business, BusinessFacts) else None,
+            reviews=reviews if isinstance(reviews, ReviewFacts) else None,
+            news=news if isinstance(news, NewsFacts) else None,
+            judicial=judicial if isinstance(judicial, JudicialFacts) else None,
+            company_profile=company_profile if isinstance(company_profile, CompanyProfile) else None,
+            data_gaps=_auto_gaps(facets),
+        )
     # Guarantee per-domain facts are set even if LLM omitted them
     agg.business = agg.business or (business if isinstance(business, BusinessFacts) else None)
     agg.reviews = agg.reviews or (reviews if isinstance(reviews, ReviewFacts) else None)

@@ -76,3 +76,94 @@ def test_render_axis_ribbon_renders_all_five_axes():
     assert "axis-ribbon-cell" in html
     # 5 axis cells should be present
     assert html.count("axis-ribbon-cell") >= 5
+
+
+class TestComputeSignalSupports:
+    """Cross-source corroboration tier logic for review signals."""
+
+    def test_no_signals_returns_empty_dict(self):
+        from jobhunter.report.builder import compute_signal_supports
+        from jobhunter.models.facts import ReviewFacts
+        assert compute_signal_supports(ReviewFacts()) == {}
+
+    def test_signal_with_only_main_url_is_single_source(self):
+        from jobhunter.report.builder import compute_signal_supports
+        from jobhunter.models.facts import ReviewFacts, OvertimeSignal
+        rf = ReviewFacts(overtime_signals=[
+            OvertimeSignal(
+                pattern="996", intensity="high",
+                url="https://maimai.cn/x",
+            )
+        ])
+        supports = compute_signal_supports(rf)
+        assert supports["https://maimai.cn/x"]["support_tier"] == "single-source"
+        assert supports["https://maimai.cn/x"]["support_count"] == 1
+
+    def test_signal_with_two_same_domain_urls_is_single_source(self):
+        from jobhunter.report.builder import compute_signal_supports
+        from jobhunter.models.facts import ReviewFacts, OvertimeSignal
+        rf = ReviewFacts(overtime_signals=[
+            OvertimeSignal(
+                pattern="996", intensity="high",
+                url="https://maimai.cn/a",
+                supporting_urls=["https://maimai.cn/b"],
+            )
+        ])
+        supports = compute_signal_supports(rf)
+        # 2 urls, 1 domain → single-source
+        assert supports["https://maimai.cn/a"]["support_tier"] == "single-source"
+
+    def test_signal_with_two_distinct_domains_is_corroborated(self):
+        from jobhunter.report.builder import compute_signal_supports
+        from jobhunter.models.facts import ReviewFacts, OvertimeSignal
+        rf = ReviewFacts(overtime_signals=[
+            OvertimeSignal(
+                pattern="996", intensity="high",
+                url="https://maimai.cn/a",
+                supporting_urls=["https://v2ex.com/b"],
+            )
+        ])
+        supports = compute_signal_supports(rf)
+        assert supports["https://maimai.cn/a"]["support_tier"] == "corroborated"
+        assert supports["https://maimai.cn/a"]["support_count"] == 2
+
+    def test_signal_with_three_distinct_domains_is_multi_domain(self):
+        from jobhunter.report.builder import compute_signal_supports
+        from jobhunter.models.facts import ReviewFacts, OvertimeSignal
+        rf = ReviewFacts(overtime_signals=[
+            OvertimeSignal(
+                pattern="996", intensity="high",
+                url="https://maimai.cn/a",
+                supporting_urls=[
+                    "https://v2ex.com/b",
+                    "https://www.zhihu.com/c",
+                ],
+            )
+        ])
+        supports = compute_signal_supports(rf)
+        assert supports["https://maimai.cn/a"]["support_tier"] == "multi-domain"
+        assert supports["https://maimai.cn/a"]["support_count"] == 3
+
+
+def test_render_includes_tier_badges_for_signals():
+    """Tier badge appears next to each signal chip in chapters IV/V/VI."""
+    from jobhunter.models.facts import OvertimeSignal
+    data = _minimal_data()
+    # Re-create with multi-domain corroboration
+    reviews = ReviewFacts(
+        overtime_signals=[OvertimeSignal(
+            pattern="996", intensity="high",
+            url="https://maimai.cn/a",
+            supporting_urls=[
+                "https://v2ex.com/b",
+                "https://www.zhihu.com/c",
+            ],
+        )],
+        vibe_signals=[VibeSignal(sentiment="mixed", evidence="流程乱")],
+    )
+    data.review_facts = reviews
+    data.findings.reviews = reviews
+    html = build_report(data)
+    assert "tier-badge" in html
+    assert "tier-multi" in html  # 3 distinct domains → multi
+    assert "跨域印证" in html

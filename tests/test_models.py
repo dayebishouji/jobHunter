@@ -69,6 +69,24 @@ class TestFacts:
         )
         assert r.salary_signals[0].base_monthly_k == 30.0
 
+    def test_business_coerces_partial_established_at(self):
+        """LLM may return '未知' / '约 2010' / '?' for established_at. Coerce to None."""
+        from jobhunter.models.facts import BusinessFacts
+        b = BusinessFacts.model_validate({"established_at": "未知"})
+        assert b.established_at is None
+        b2 = BusinessFacts.model_validate({"established_at": "2014-05-01"})
+        assert b2.established_at.year == 2014
+        b3 = BusinessFacts.model_validate({"established_at": "约 2010 年"})
+        assert b3.established_at is None
+
+    def test_business_coerces_anomaly_listed_strings(self):
+        """LLM may return 是 / 否 / 未列入 instead of bool."""
+        from jobhunter.models.facts import BusinessFacts
+        assert BusinessFacts.model_validate({"anomaly_listed": "是"}).anomaly_listed is True
+        assert BusinessFacts.model_validate({"anomaly_listed": "否"}).anomaly_listed is False
+        assert BusinessFacts.model_validate({"anomaly_listed": "未列入"}).anomaly_listed is False
+        assert BusinessFacts.model_validate({"anomaly_listed": "未知"}).anomaly_listed is None
+
     def test_aggregated_findings_round_trip(self):
         a = AggregatedFindings(
             company_query_summary="测试",
@@ -197,6 +215,36 @@ class TestBusinessExternalInvestmentsCoercion:
         assert b.external_investments_count is None
 
 
+class TestSalarySignalSupportingUrls:
+    """Each signal carries supporting_urls for cross-source corroboration."""
+
+    def test_supporting_urls_default_empty(self):
+        s = SalarySignal()
+        assert s.supporting_urls == []
+
+    def test_supporting_urls_round_trip(self):
+        s = SalarySignal(
+            evidence="x",
+            url="https://maimai.cn/a",
+            supporting_urls=[
+                "https://v2ex.com/b",
+                "https://www.zhihu.com/c",
+            ],
+        )
+        assert len(s.supporting_urls) == 2
+        s2 = SalarySignal.model_validate_json(s.model_dump_json())
+        assert len(s2.supporting_urls) == 2
+
+    def test_salary_range_fields(self):
+        s = SalarySignal.model_validate({
+            "salary_range_min_k": "20",
+            "salary_range_max_k": "40",
+            "evidence": "20k-40k",
+        })
+        assert s.salary_range_min_k == 20.0
+        assert s.salary_range_max_k == 40.0
+
+
 class TestSlangEntry:
     """SlangEntry surfaces internet / workplace slang used in UGC reviews,
     with a plain-Chinese gloss so report readers can parse it."""
@@ -235,6 +283,17 @@ class TestSlangEntry:
         assert s2.term == "摆烂"
         assert s2.meaning == "主动降低投入"
         assert s2.count == 3
+
+    def test_numeric_term_coerced_to_string(self):
+        """LLM occasionally emits slang like `996` as an int. Coerce to str
+        so the whole ReviewFacts doesn't fail validation."""
+        s = SlangEntry.model_validate({"term": 996, "count": 10})
+        assert s.term == "996"
+        assert s.count == 10
+
+    def test_float_term_coerced_to_string(self):
+        s = SlangEntry.model_validate({"term": 6.66})
+        assert s.term == "6.66"
 
 
 class TestReviewFactsSlangGlossary:

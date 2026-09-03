@@ -357,14 +357,28 @@
     <p class="empty">暂无薪酬爆料。可在看准网 / 脉脉 / 牛客 / 一亩三分地 / 小红书 搜索 "{{ data.query.company }}"。</p>
   {% else %}
   <table>
-    <thead><tr><th>岗位</th><th>月 base (K)</th><th>奖金 (月)</th><th>证据</th><th>来源</th></tr></thead>
+    <thead><tr><th>岗位</th><th>月 base (K)</th><th>奖金 (月)</th><th>证据</th><th>印证</th><th>来源</th></tr></thead>
     <tbody>
       {% for s in r.salary_signals %}
       <tr>
         <td><strong>{{ s.position or '—' }}</strong></td>
-        <td class="mono">{{ '%.1f'|format(s.base_monthly_k) if s.base_monthly_k is not none else '—' }}</td>
+        <td class="mono">
+          {%- if s.salary_range_min_k is not none and s.salary_range_max_k is not none -%}
+            {{ '%.0f–%.0f'|format(s.salary_range_min_k, s.salary_range_max_k) }}
+            <span class="muted" style="font-size:11px;">({{ '%.0f'|format((s.salary_range_min_k + s.salary_range_max_k) / 2) }} 中位)</span>
+          {%- elif s.base_monthly_k is not none -%}
+            {{ '%.1f'|format(s.base_monthly_k) }}
+          {%- else -%}
+            —
+          {%- endif -%}
+        </td>
         <td class="mono">{{ s.bonus_months if s.bonus_months is not none else '—' }}</td>
         <td><span class="muted">{{ s.evidence or '—' }}</span></td>
+        {% set sup = signal_supports.get(s.url|string, {}) %}
+        {% set tier = sup.get('support_tier', 'unverified') %}
+        {% set tlabel = tier_label[tier][0] %}
+        {% set tclass = tier_label[tier][1] %}
+        <td><span class="tier-badge {{ tclass }}" title="{{ sup.get('support_count', 0) }} 个来源 / {{ sup.get('domains', [])|join(' · ') }}">{{ tlabel }}{% if sup.get('support_count', 0) > 1 %} ×{{ sup.support_count }}{% endif %}</span></td>
         <td>{% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">来源</a>{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
@@ -423,6 +437,11 @@
     {% for o in r.overtime_signals %}
     <li>
       <span class="chip chip-{{ {'high':'bad','medium':'warn','low':'good'}[o.intensity] }}">{{ o.pattern }} · {{ {'high':'重','medium':'中','low':'轻'}[o.intensity] }}</span>
+      {% set sup = signal_supports.get(o.url|string, {}) %}
+      {% set tier = sup.get('support_tier', 'unverified') %}
+      {% set tlabel = tier_label[tier][0] %}
+      {% set tclass = tier_label[tier][1] %}
+      <span class="tier-badge {{ tclass }}" title="{{ sup.get('support_count', 0) }} 个来源 / {{ sup.get('domains', [])|join(' · ') }}">{{ tlabel }}{% if sup.get('support_count', 0) > 1 %} ×{{ sup.support_count }}{% endif %}</span>
       {% if o.url %} · <a href="{{ o.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
       {% if o.evidence %}
         <blockquote class="evidence">"{{ o.evidence }}"</blockquote>
@@ -477,6 +496,11 @@
         {% for v in r.vibe_signals %}
         <li>
           <span class="chip chip-{{ {'positive':'good','negative':'bad','mixed':'warn'}.get(v.sentiment, 'neutral') }}">{{ {'positive':'正面','negative':'负面','mixed':'混合','neutral':'中性'}[v.sentiment] }}</span>
+          {% set sup = signal_supports.get(v.url|string, {}) %}
+          {% set tier = sup.get('support_tier', 'unverified') %}
+          {% set tlabel = tier_label[tier][0] %}
+          {% set tclass = tier_label[tier][1] %}
+          <span class="tier-badge {{ tclass }}" title="{{ sup.get('support_count', 0) }} 个来源 / {{ sup.get('domains', [])|join(' · ') }}">{{ tlabel }}{% if sup.get('support_count', 0) > 1 %} ×{{ sup.support_count }}{% endif %}</span>
           {% if v.url %} · <a href="{{ v.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
           {% if v.evidence %}
             <blockquote class="evidence">"{{ v.evidence }}"</blockquote>

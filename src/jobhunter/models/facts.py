@@ -135,18 +135,54 @@ class BusinessFacts(NullTolerantListBase):
             return "存续"
         return "其他"
 
+    @field_validator("established_at", mode="before")
+    @classmethod
+    def _coerce_date(cls, v):
+        """LLM often returns partial dates or '未知' / '约 2010 年'.
+        Only accept a parseable YYYY-MM-DD; anything else → None."""
+        if v is None or isinstance(v, date):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s or s in ("未知", "未知", "约", "?", "无", "未知"):
+                return None
+            from datetime import date as _date
+            try:
+                return _date.fromisoformat(s)
+            except ValueError:
+                return None
+        return None
+
+    @field_validator("anomaly_listed", mode="before")
+    @classmethod
+    def _coerce_bool(cls, v):
+        """LLM sometimes returns '否' / '是' / '未列入' instead of bool."""
+        if v is None or isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if s in ("是", "有", "列入", "true", "True", "yes", "Yes", "1"):
+                return True
+            if s in ("否", "无", "未列入", "false", "False", "no", "No", "0", ""):
+                return False
+            return None
+        return None
+
 
 # ---------- Reviews ----------
 
-class SalarySignal(BaseModel):
+class SalarySignal(NullTolerantListBase):
     position: str | None = None
     base_monthly_k: float | None = None
+    salary_range_min_k: float | None = None
+    salary_range_max_k: float | None = None
     bonus_months: float | None = None
     salary_total_months: int | None = None
     evidence: str = ""
     url: HttpUrl | None = None
+    supporting_urls: list[HttpUrl] = Field(default_factory=list)
 
-    @field_validator("base_monthly_k", "bonus_months", mode="before")
+    @field_validator("base_monthly_k", "bonus_months", "salary_range_min_k", "salary_range_max_k", mode="before")
     @classmethod
     def _coerce_float(cls, v):
         """LLM often returns non-numeric strings ("面议", "20k-40k", "未知")
@@ -187,11 +223,12 @@ class SalarySignal(BaseModel):
         return None
 
 
-class OvertimeSignal(BaseModel):
+class OvertimeSignal(NullTolerantListBase):
     pattern: Literal["996", "995", "大小周", "弹性", "不加班", "未知"] = "未知"
     intensity: Literal["low", "medium", "high"] = "medium"
     evidence: str = ""
     url: HttpUrl | None = None
+    supporting_urls: list[HttpUrl] = Field(default_factory=list)
 
     @field_validator("pattern", mode="before")
     @classmethod
@@ -232,10 +269,11 @@ class OvertimeSignal(BaseModel):
         return "medium"
 
 
-class TurnoverSignal(BaseModel):
+class TurnoverSignal(NullTolerantListBase):
     rate: Literal["low", "medium", "high", "unknown"] = "unknown"
     evidence: str = ""
     url: HttpUrl | None = None
+    supporting_urls: list[HttpUrl] = Field(default_factory=list)
 
     @field_validator("rate", mode="before")
     @classmethod
@@ -254,10 +292,11 @@ class TurnoverSignal(BaseModel):
         return "unknown"
 
 
-class VibeSignal(BaseModel):
+class VibeSignal(NullTolerantListBase):
     sentiment: Sentiment = "neutral"
     evidence: str = ""
     url: HttpUrl | None = None
+    supporting_urls: list[HttpUrl] = Field(default_factory=list)
 
     @field_validator("sentiment", mode="before")
     @classmethod
@@ -304,6 +343,16 @@ class SlangEntry(BaseModel):
             m = re.search(r"\d+", v.replace(",", ""))
             return max(1, int(m.group())) if m else 1
         return 1
+
+    @field_validator("term", mode="before")
+    @classmethod
+    def _coerce_term(cls, v):
+        """LLM sometimes emits numeric slang like `996` as an int. Coerce."""
+        if v is None:
+            return ""
+        if isinstance(v, (int, float)):
+            return str(v)
+        return v
 
 
 class ReviewFacts(NullTolerantListBase):

@@ -82,6 +82,86 @@ def _axes_avg(axes) -> float:
     return round(sum(a.stars for a in axes) / len(axes), 2)
 
 
+def _domain_root(url: str | None) -> str:
+    """Return the registrable root of a URL host (e.g. 'maimai.cn', 'v2ex.com').
+    Used to bucket URLs by domain for cross-source corroboration."""
+    if not url:
+        return ""
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(str(url)).hostname or "").lower()
+        if not host:
+            return ""
+        parts = host.split(".")
+        if len(parts) >= 2:
+            return ".".join(parts[-2:])
+        return host
+    except Exception:
+        return ""
+
+
+def compute_signal_supports(review_facts) -> dict[str, dict]:
+    """For each signal in review_facts, compute (support_count, support_tier).
+
+    support_count = len(supporting_urls) + 1 (the main `url` counts as one).
+    support_tier:
+        - 'unverified'           : no urls at all
+        - 'single-source'        : exactly one url (could be the LLM-confabulated)
+        - 'corroborated'         : ≥2 urls from ≥2 distinct domain roots
+        - 'multi-domain'         : ≥3 urls from ≥3 distinct domain roots
+
+    Returns a dict keyed by the signal's main url string for the template to
+    look up. Signals with no url are excluded.
+    """
+    out: dict[str, dict] = {}
+    if not review_facts:
+        return out
+
+    def _annotate(url, supporting_urls):
+        if not url:
+            return None
+        all_urls = [str(url)] + [str(u) for u in (supporting_urls or [])]
+        domains = {_domain_root(u) for u in all_urls if u}
+        domains.discard("")
+        n = len(all_urls)
+        n_dom = len(domains)
+        if n == 0:
+            tier = "unverified"
+        elif n == 1 or n_dom == 1:
+            tier = "single-source"
+        elif n_dom >= 3:
+            tier = "multi-domain"
+        else:
+            tier = "corroborated"
+        return {"support_count": n, "support_tier": tier, "domains": sorted(domains)}
+
+    for s in (review_facts.salary_signals or []):
+        info = _annotate(s.url, getattr(s, "supporting_urls", None))
+        if info:
+            out[str(s.url)] = info
+    for s in (review_facts.overtime_signals or []):
+        info = _annotate(s.url, getattr(s, "supporting_urls", None))
+        if info:
+            out[str(s.url)] = info
+    for s in (review_facts.vibe_signals or []):
+        info = _annotate(s.url, getattr(s, "supporting_urls", None))
+        if info:
+            out[str(s.url)] = info
+    for s in (review_facts.turnover_signals or []):
+        info = _annotate(s.url, getattr(s, "supporting_urls", None))
+        if info:
+            out[str(s.url)] = info
+    return out
+
+
+_TIER_LABEL = {
+    "unverified":    ("待核实", "tier-unverified"),
+    "single-source": ("单一来源", "tier-single"),
+    "corroborated":  ("多源印证", "tier-corroborated"),
+    "multi-domain":  ("跨域印证", "tier-multi"),
+}
+
+
 def build_report(data: ReportData) -> str:
     css = (_STATIC_DIR / "report.css").read_text(encoding="utf-8")
     sources = _collect_sources(data)
@@ -107,6 +187,10 @@ def build_report(data: ReportData) -> str:
         news_items_for_timeline(data.news_facts.items) if data.news_facts else []
     )
 
+    # Cross-source corroboration for review signals — drives the
+    # 「待核实 / 单一来源 / 多源印证 / 跨域印证」tier badge in chapter IV/V/VI.
+    signal_supports = compute_signal_supports(data.review_facts)
+
     tmpl = _ENV.get_template("report.html.j2")
     return tmpl.render(
         data=data,
@@ -125,5 +209,7 @@ def build_report(data: ReportData) -> str:
         case_timeline_svg=case_timeline,
         funding_stage_pos=funding_pos,
         news_timeline_items=news_timeline_items,
+        signal_supports=signal_supports,
+        tier_label=_TIER_LABEL,
         favicon_url=_favicon_url,
     )

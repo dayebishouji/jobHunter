@@ -17,13 +17,16 @@ EXTRACT_BUSINESS_SUFFIX = "\n\n本次目标：抽取该公司的**工商基本�
 
 EXTRACT_REVIEWS_SUFFIX = (
     "\n\n本次目标：抽取**员工评价**信号——"
-    "（A）salary_signals: 薪酬爆料（岗位名/月base K/月数/月数奖金），"
+    "（A）salary_signals: 薪酬爆料 — 岗位名 / 月base K（如 '28'）/ salary_range_min_k + salary_range_max_k（如 '20k-40k' 拆成 20 + 40）/"
+    "bonus_months / salary_total_months（如 14 薪），"
     "（B）overtime_signals: 加班模式（枚举 996/995/大小周/弹性/不加班）与强度（low/medium/high），"
     "（C）turnover_signals: 离职率（low/medium/high/unknown），"
     "（D）vibe_signals: 团队氛围情感（positive/neutral/negative/mixed），"
     "（E）jd_gap_signals: 招聘 JD 与实际工作的差距（JD 承诺/实际），"
     "（F）slang_glossary: 原文里出现的**职场 / 互联网口语词**（如「内卷」「ICU」「摆烂」「跑路」「PUA」「卷王」「奋斗逼」「黑厂」「大小周」「躺平」「核动力加班」「毁约」），"
-    "给 1 句通俗解释 meaning（≤30 字）、出现次数 count、最相关的 url。每条 signal 给一句 evidence 与 1 个 url。"
+    "给 1 句通俗解释 meaning（≤30 字）、出现次数 count、最相关的 url。"
+    "\n\n**重要**：每条 signal（salary / overtime / turnover / vibe）除了主 url，再列出 1-3 个**独立印证来源**的 url 放进 supporting_urls 字段（同一条事实出现在多个不同 UGC 帖子里才算印证）。"
+    "每条 signal 给一句 evidence 与 1 个 url。"
 )
 
 EXTRACT_NEWS_SUFFIX = (
