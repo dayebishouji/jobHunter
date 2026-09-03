@@ -4,14 +4,14 @@
 
 ## 项目一句话
 
-输入「公司 + 岗位 + 城市」→ 5–10 分钟生成单文件 HTML 报告（5 轴打分 + 工商/司法/薪酬/加班/氛围/舆情 + 面试反问）。数据源 Tavily + Claude，输出可分享。
+输入「公司 + 岗位 + 城市」→ 5–10 分钟生成单文件 HTML 报告（5 轴打分 + 工商/司法/公司画像/薪酬/加班/氛围/舆情 + 面试反问）。数据源 Tavily + Claude，输出可分享。
 
 ## 怎么跑
 
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
 scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
-.venv/Scripts/python.exe -m pytest                       # 63 tests
+.venv/Scripts/python.exe -m pytest                       # 92 tests
 ```
 
 `.env` 在 `e:\project\jobHunter\.env`（`ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` 可选走 ccswitch 中转 + `TAVILY_API_KEY`）。
@@ -33,18 +33,21 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.1.4）
+## 当前边界（v0.1.5）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
 - ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
 - LLM 偶有 enum 同义词（"在业"→存续 / "重"→high），已加 per-field 校验器
-- LLM 偶对 Optional 子模型字段（business / reviews / judicial）返回非 dict 值，`consolidate` 步调 `_sanitize_aggregated` 清洗成 None
+- LLM 偶对 Optional 子模型字段（business / reviews / judicial / company_profile）返回非 dict 值，`consolidate` 步调 `_sanitize_aggregated` 清洗成 None
 - consolidation 步 max_tokens 已 8000（默认 4096 不够）
 - 交互模式在 Python 3.14 下用 `loop.run_in_executor` 跑 InquirerPy，绕开嵌套 asyncio.run
+- reviews 域查询会先调一次 LLM 生成公司别名（缩写 / 英文名），别名最多取 3 个，避免一次跑挂
+- 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 
 ## 下次接手该知道
 
 - 改 schema → `pytest -v` 必绿，且 `scripts/regen_sample.py` 重生成样例对比视觉
 - 加新 collector → 实现 `BaseCollector.safe_collect()` 即可自动并发，软失败是默认行为
 - 加新打分轴 → `models/scoring.py:AXIS_LABELS_ZH` + `report/scoring.py:compute_axes()` + 模板 `overview-grid`
+- 加新采集维度 → 6 个串接点必须同步：`query_templates.<DOMAIN>_DOMAINS` / `extract.DOMAIN_SUFFIX + MODEL_BY_DOMAIN` / `llm/schemas._EXTRACT_TOOLS + key_to_idx` / `models/raw.CollectorResult.domain` Literal / `normalize.by_domain` bucket / `pipeline._compute_confidence` 计数 + 模板 section
 - **不要**改 `env_prefix` —— 之前被设成 `JOBHUNTER_` 会让裸 `ANTHROPIC_API_KEY` 失效，详见 commit `a00ce8b`
