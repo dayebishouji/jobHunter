@@ -10,10 +10,17 @@ import jinja2
 
 from jobhunter.models.report import ReportData, SourceEntry
 from jobhunter.report.charts import (
+    case_timeline_svg,
+    case_year_buckets,
+    funding_stage_position,
+    news_items_for_timeline,
     overtime_distribution,
     radar_svg,
     salary_distribution,
     score_ring_svg,
+    shareholder_pie_svg,
+    vibe_donut_svg,
+    vibe_sentiment_counts,
 )
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -25,21 +32,6 @@ _ENV = jinja2.Environment(
     trim_blocks=True,
     lstrip_blocks=True,
 )
-
-# Section icons (Unicode-only, no external font required)
-SECTION_ICONS = {
-    "工商基本面": "🏢",
-    "司法风险": "⚖",
-    "薪酬与福利": "💰",
-    "加班与工作强度": "⏱",
-    "团队氛围与文化": "🧭",
-    "岗位真实情况 vs 招聘 JD": "📋",
-    "近期舆情": "📰",
-    "面试反问清单": "💬",
-    "综合推断（LLM 推断，每条带佐证）": "🧠",
-    "数据来源附录": "🔗",
-    "数据缺口": "⚠",
-}
 
 
 def _domain_of(url) -> str:
@@ -99,6 +91,22 @@ def build_report(data: ReportData) -> str:
     hero_ring = score_ring_svg(avg_score) if avg_score else ""
     overtime_dist = overtime_distribution(data.review_facts.overtime_signals) if data.review_facts else []
     salary_dist = salary_distribution(data.review_facts.salary_signals) if data.review_facts else []
+
+    # New editorial primitives
+    vibe_counts = vibe_sentiment_counts(data.review_facts.vibe_signals) if data.review_facts else []
+    vibe_donut = vibe_donut_svg(vibe_counts)
+    shareholders = (data.business_facts.top_shareholders if data.business_facts else []) or []
+    shareholder_donut = shareholder_pie_svg(shareholders)
+    sample_cases = (data.judicial_facts.sample_cases if data.judicial_facts else []) or []
+    case_buckets = case_year_buckets(sample_cases)
+    case_timeline = case_timeline_svg(case_buckets)
+    funding_pos = funding_stage_position(
+        data.company_profile.funding_stage if data.company_profile else None
+    )
+    news_timeline_items = (
+        news_items_for_timeline(data.news_facts.items) if data.news_facts else []
+    )
+
     tmpl = _ENV.get_template("report.html.j2")
     return tmpl.render(
         data=data,
@@ -110,6 +118,12 @@ def build_report(data: ReportData) -> str:
         hero_ring_svg=hero_ring,
         overtime_dist=overtime_dist,
         salary_dist=salary_dist,
+        vibe_counts=vibe_counts,
+        vibe_donut_svg=vibe_donut,
+        shareholder_donut_svg=shareholder_donut,
+        case_buckets=case_buckets,
+        case_timeline_svg=case_timeline,
+        funding_stage_pos=funding_pos,
+        news_timeline_items=news_timeline_items,
         favicon_url=_favicon_url,
-        section_icon=lambda title: SECTION_ICONS.get(title, "•"),
     )

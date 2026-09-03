@@ -15,6 +15,8 @@ from jobhunter.config import Settings
 from jobhunter.models.facts import (
     AggregatedFindings,
     BusinessFacts,
+    CaseItem,
+    CompanyProfile,
     InferredClaim,
     JudicialFacts,
     NewsFacts,
@@ -22,6 +24,7 @@ from jobhunter.models.facts import (
     ReviewFacts,
     SalarySignal,
     OvertimeSignal,
+    Shareholder,
     VibeSignal,
 )
 from jobhunter.models.query import CompanyQuery
@@ -86,9 +89,65 @@ def main() -> None:
         paid_in_capital="5000 万元",
         address="杭州市西湖区",
         scope="技术开发、技术咨询、技术服务",
-        top_shareholders=[],
+        top_shareholders=[
+            Shareholder(name="创始团队", stake_pct=35.0, contribution="1750 万元"),
+            Shareholder(name="红杉资本", stake_pct=18.0, contribution="900 万元"),
+            Shareholder(name="高瓴创投", stake_pct=12.0, contribution="600 万元"),
+            Shareholder(name="员工持股平台", stake_pct=10.0, contribution="500 万元"),
+            Shareholder(name="天使投资人 王某", stake_pct=8.0, contribution="400 万元"),
+        ],
         anomaly_listed=False,
         source_urls=["https://www.qcc.com/firm/someid"],
+    )
+
+    judicial = JudicialFacts(
+        case_count_total=23,
+        case_count_recent_year=8,
+        enforcement_records=2,
+        sample_cases=[
+            CaseItem(title="某某科技 v. 示例公司 合同纠纷", role="被告", year=2026, url="https://wenshu.court.gov.cn/case1"),
+            CaseItem(title="示例公司 v. 某前员工 竞业限制纠纷", role="原告", year=2025, url="https://wenshu.court.gov.cn/case2"),
+            CaseItem(title="供应商 v. 示例公司 货款纠纷", role="被告", year=2025, url="https://wenshu.court.gov.cn/case3"),
+            CaseItem(title="示例公司 v. 某客户 服务合同纠纷", role="原告", year=2024, url="https://wenshu.court.gov.cn/case4"),
+            CaseItem(title="员工 v. 示例公司 劳动仲裁", role="被告", year=2024, url="https://wenshu.court.gov.cn/case5"),
+        ],
+        source_urls=["https://wenshu.court.gov.cn/"],
+    )
+
+    company_profile = CompanyProfile(
+        description="国内领先的企业级 PaaS 与低代码平台提供商,服务超过 3000 家中大型客户,深耕金融与制造行业",
+        official_website="https://www.example-corp.com",
+        main_business=[
+            "企业级 PaaS 平台开发与运维",
+            "低代码 / aPaaS 应用搭建工具",
+            "行业云解决方案(金融 / 制造 / 零售)",
+            "定制化技术咨询与交付服务",
+        ],
+        products=[
+            "ExamplePaaS 5.0 — 云原生应用平台",
+            "ExampleBuilder — 低代码应用搭建",
+            "ExampleConnect — 数据集成中台",
+            "ExampleInsight — 业务分析 BI 套件",
+        ],
+        industries=["云计算 SaaS", "企业服务", "PaaS", "低代码"],
+        company_size="1000-5000 人",
+        founded_year=2014,
+        funding_stage="C 轮",
+        total_funding="约 12 亿元",
+        investors=[
+            "红杉资本",
+            "高瓴创投",
+            "GGV 纪源资本",
+            "经纬创投",
+            "启明创投",
+        ],
+        headquarters="杭州市西湖区文一西路",
+        prospects="持续投入 AI Agent 与行业大模型方向,海外业务起步于东南亚市场,核心增长来自金融与制造业数字化转型",
+        source_urls=[
+            "https://baike.baidu.com/item/example",
+            "https://www.itjuzi.com/company/example",
+            "https://www.cyzone.cn/article/example",
+        ],
     )
 
     news = NewsFacts(
@@ -118,13 +177,19 @@ def main() -> None:
         business=business,
         reviews=reviews,
         news=news,
+        judicial=judicial,
+        company_profile=company_profile,
         inferences=[
             InferredClaim(claim="加班偏重但薪酬中上，整体仍是技术驱动的中型互联网公司",
                           grounding_evidence=["https://www.zhihu.com/q/996", "https://www.kanzhun.com/r/abc"]),
             InferredClaim(claim="近期融资健康但已出现裁员信号，业务结构可能正在收缩",
                           grounding_evidence=["https://36kr.com/p/sample-news-1", "https://www.huxiu.com/article/sample-news-2.html"]),
+            InferredClaim(claim="司法风险以合同纠纷为主，未见重大被执行，常规经营风险",
+                          grounding_evidence=["https://wenshu.court.gov.cn/case1", "https://wenshu.court.gov.cn/case3"]),
+            InferredClaim(claim="股权结构以创始团队 + 头部 VC 为主，员工持股比例健康",
+                          grounding_evidence=["https://www.qcc.com/firm/someid"]),
         ],
-        data_gaps=["司法数据未能获取（本机 gsxt 不可达，建议人工到 wenshu.court.gov.cn 核查）"],
+        data_gaps=[],
     )
 
     salary_conflicts = detect_salary_conflicts(reviews)
@@ -138,7 +203,8 @@ def main() -> None:
         business_facts=business,
         review_facts=reviews,
         news_facts=news,
-        judicial_facts=None,
+        judicial_facts=judicial,
+        company_profile=company_profile,
         interview_questions=[
             "团队最近一次调薪是什么时候？幅度如何？",
             "过去一年里，离职率大概多少？主要是哪几个团队？",
@@ -146,9 +212,11 @@ def main() -> None:
             "中干空降的决策机制是怎样的？",
             "加班的 '996' 是常态还是项目冲刺期？",
             "C 轮融资后，核心业务方向会有什么调整？",
+            "金融与制造两大行业的客户结构，对个人技术栈有什么偏好？",
+            "公司对 AI Agent 的投入是 all-in 还是试水？",
         ],
         data_gaps=findings.data_gaps,
-        overall_confidence="medium",
+        overall_confidence="high",
     )
 
     html = build_report(data)

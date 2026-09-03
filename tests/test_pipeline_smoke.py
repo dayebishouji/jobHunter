@@ -133,7 +133,7 @@ async def test_end_to_end_pipeline(tmp_path: Path, fake_tavily, fake_llm):
     html = arts.path.read_text(encoding="utf-8")
     assert "A 公司" in html
     assert "加班强度" in html  # axis label
-    assert "数据来源附录" in html  # sources section
+    assert "来源附录" in html  # sources section (chapter title)
     assert "www.zhihu.com" in html  # source URL surfaced
 
     # 3. Confidence is at least medium (we have reviews + news)

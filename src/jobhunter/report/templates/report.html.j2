@@ -3,374 +3,647 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>公司反向背调 · {{ data.query.company }}</title>
+<title>反向背调 · {{ data.query.company }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;700&display=swap" />
 <style>{{ css | safe }}</style>
 </head>
 <body>
 <div class="container">
 
-  {# ---------- Hero ---------- #}
-  <header class="hero">
-    <div class="hero-grid">
-      <div class="hero-text">
-        <div class="kicker">反向背调报告</div>
-        <h1>{{ data.query.company }}<span class="pill {{ data.overall_confidence }}">{{ {'high':'高置信','medium':'中等置信','low':'低置信'}[data.overall_confidence] }}</span></h1>
-        <div class="meta">生成于 {{ data.generated_at.strftime('%Y-%m-%d %H:%M') }} · jobHunter v0.1</div>
-        <div class="target">📍 {{ data.query.position or '岗位未指定' }} · {{ data.query.city or '城市未指定' }}</div>
+{# ---------- Masthead ---------- #}
+<header class="masthead">
+  <div class="masthead-left">jobHunter · 反向背调</div>
+  <div class="masthead-title">公司备忘录</div>
+  <div class="masthead-right">
+    <span class="mono">{{ data.generated_at.strftime('%Y-%m-%d') }}</span> · 第 {{ now.strftime('%V') }} 周
+  </div>
+</header>
+
+{# ---------- Hero ---------- #}
+<section class="hero">
+  <div class="hero-main">
+    <div class="hero-edition">{{ data.query.position or '岗位未指定' }} · {{ data.query.city or '城市未指定' }}</div>
+    <h1 class="hero-title">
+      {{ data.query.company }}
+      <span class="target">一份关于 {{ data.query.company }} 的尽调备忘</span>
+    </h1>
+    <div class="hero-meta">
+      <span><span class="meta-key">置信度</span>
+        <span class="pill {{ data.overall_confidence }}">
+          {{ {'high':'高置信','medium':'中等置信','low':'低置信'}[data.overall_confidence] }}
+        </span>
+      </span>
+      <span><span class="meta-key">综合分</span>
+        <span class="meta-val mono">{{ '%.1f'|format(avg_score) }} / 5.0</span>
+      </span>
+      <span><span class="meta-key">数据维度</span>
+        <span class="meta-val mono">
+          {{ (1 if data.company_profile else 0) + (1 if data.business_facts else 0) + (1 if data.review_facts else 0) + (1 if data.news_facts else 0) + (1 if data.judicial_facts else 0) }}/5
+        </span>
+      </span>
+      <span><span class="meta-key">来源</span>
+        <span class="meta-val mono">{{ sources|length }} 条</span>
+      </span>
+    </div>
+
+    {% set cp = data.company_profile %}
+    {% if cp and cp.description %}
+      <p class="hero-summary">
+        {{ cp.description }}
+        {% if cp.headquarters or cp.company_size or cp.funding_stage %}
+          <strong>
+            {%- if cp.headquarters %}总部位于 {{ cp.headquarters }}{% endif -%}
+            {%- if cp.company_size %} · {{ cp.company_size }}{% endif -%}
+            {%- if cp.funding_stage %} · {{ cp.funding_stage }}{% endif -%}
+            {%- if cp.founded_year %} · 成立 {{ cp.founded_year }}{% endif -%}
+          </strong>
+        {% endif %}
+      </p>
+    {% endif %}
+  </div>
+
+  <aside class="hero-side">
+    <div class="hero-ring">
+      <div class="hero-ring-label">综合健康度</div>
+      {{ hero_ring_svg | safe }}
+    </div>
+
+    {% set lowest = (data.axes | sort(attribute='stars'))[0] if data.axes else None %}
+    {% if lowest %}
+      <div class="hero-dispatch">
+        <span class="dispatch-label">主编按</span>
+        最弱维度是 <strong>{{ lowest.label_zh }}</strong> ({{ lowest.stars }}/5)——{{ lowest.rationale }}
       </div>
-      <div class="hero-score">
-        {{ hero_ring_svg | safe }}
-        <div class="hero-score-label">综合健康度</div>
-      </div>
+    {% endif %}
+
+    {% if data.axes %}
+    <div class="hero-radar">
+      <div class="hero-ring-label">风险断面</div>
+      <div class="hero-radar-svg">{{ radar_svg | safe }}</div>
+    </div>
+    {% endif %}
+  </aside>
+</section>
+
+{# ---------- 5-axis ribbon ---------- #}
+{% if data.axes %}
+<section class="axis-ribbon">
+  {% for ax in data.axes %}
+  <div class="axis-ribbon-cell" data-color="{{ ax.color }}">
+    <div class="axis-ribbon-name">{{ ax.label_zh }}</div>
+    <div class="axis-ribbon-num">{{ ax.stars }}<span style="font-size:0.55em;color:var(--ink-soft);">/5</span></div>
+    <div class="axis-ribbon-bar">
+      {% for n in range(1, 6) %}
+        <span class="axis-ribbon-dot {{ 'on' if n <= ax.stars else '' }}" data-color="{{ ax.color }}"></span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{# ====================== CHAPTER I — 公司画像 ====================== #}
+<section class="chapter" id="ch-company">
+  <header class="chapter-head">
+    <div class="chapter-num">I<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">公司画像</h2>
+      <p class="chapter-dek">主营业务、产品矩阵、融资轨迹与前景——读懂这家公司是谁</p>
     </div>
   </header>
 
-  {# ---------- 5-axis overview: radar + axis list ---------- #}
-  <section class="overview">
-    <h2 class="section-h2">5 轴概览</h2>
-    <div class="overview-grid">
-      <div class="radar-wrap">{{ radar_svg | safe }}</div>
-      <div class="axis-list">
-        {% for ax in data.axes %}
-        <div class="axis-row">
-          <div class="axis-name">{{ ax.label_zh }}</div>
-          <div class="axis-bar">
-            {% for n in range(1, 6) %}
-              <span class="dot {{ ax.color if n <= ax.stars else 'none' }}"></span>
-            {% endfor %}
-          </div>
-          <div class="axis-score {{ ax.color }}">{{ ax.stars }}</div>
-          <div class="axis-rationale">{{ ax.rationale }}</div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </section>
+  {% set cp = data.company_profile %}
+  {% if not cp %}
+    <p class="empty">公司画像数据缺失。可人工到 <a href="https://baike.baidu.com/" target="_blank" rel="noopener">百度百科</a> / <a href="https://www.itjuzi.com/" target="_blank" rel="noopener">IT 桔子</a> / <a href="https://www.qcc.com/" target="_blank" rel="noopener">企查查</a> 搜索 "{{ data.query.company }}" 核实主营业务、融资阶段与规模。</p>
+  {% else %}
 
-  {# ---------- Data gaps (if any) ---------- #}
-  {% if data.data_gaps %}
-  <details open>
-    <summary>{{ section_icon('数据缺口') }} 数据缺口</summary>
-    <div class="section-body">
-      {% for g in data.data_gaps %}
-      <div class="data-gap">⚠ {{ g }}</div>
-      {% endfor %}
-    </div>
-  </details>
+  {% if cp.prospects %}
+  <div class="chapter-takeaway">
+    <div class="chapter-takeaway-tag">一句话结论</div>
+    <div>{{ cp.prospects }}</div>
+  </div>
   {% endif %}
 
-  {# ---------- Business basics ---------- #}
-  <details>
-    <summary>{{ section_icon('工商基本面') }} 工商基本面</summary>
-    <div class="section-body">
-      {% set b = data.business_facts %}
-      {% if not b %}
-        <p class="empty">未能获取工商数据。建议人工到 gsxt.gov.cn 与 启信宝/天眼查 核查"{{ data.query.company }}"的法人、注册资本、经营状态、是否经营异常。</p>
-      {% else %}
-        <table>
-          <tr><th>法人</th><td>{{ b.legal_rep or '—' }}</td></tr>
-          <tr><th>成立日期</th><td>{{ b.established_at or '—' }}</td></tr>
-          <tr><th>注册资本</th><td>{{ b.registered_capital or '—' }}</td></tr>
-          {% if b.paid_in_capital %}
-          <tr><th>实缴资本</th><td>{{ b.paid_in_capital }}</td></tr>
-          {% endif %}
-          <tr><th>经营状态</th><td>{{ b.status or '—' }}</td></tr>
-          {% if b.address %}<tr><th>注册地址</th><td>{{ b.address }}</td></td></tr>{% endif %}
-          {% if b.scope %}<tr><th>经营范围</th><td>{{ b.scope }}</td></tr>{% endif %}
-          {% if b.anomaly_listed %}
-          <tr><th>经营异常</th><td style="color:var(--bad);">已列入经营异常名录</td></tr>
-          {% endif %}
-        </table>
-        {% if b.top_shareholders %}
-        <h4 style="margin-top:14px;font-size:13px;">主要股东</h4>
-        <table>
-          <thead><tr><th>股东</th><th>持股</th><th>出资</th></tr></thead>
-          <tbody>
-            {% for s in b.top_shareholders %}
-            <tr>
-              <td>{{ s.name }}</td>
-              <td>{{ '{:.0%}'.format(s.stake_pct/100) if s.stake_pct is not none else '—' }}</td>
-              <td>{{ s.contribution or '—' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% endif %}
-      {% endif %}
+  {# Stat strip — the at-a-glance facts #}
+  <div class="stat-strip">
+    {% if cp.official_website %}
+    <div class="stat">
+      <div class="stat-key">官网</div>
+      <div class="stat-val" style="font-size:16px;"><a href="{{ cp.official_website }}" target="_blank" rel="noopener">{{ cp.official_website.host }}</a></div>
     </div>
-  </details>
+    {% endif %}
+    {% if cp.headquarters %}
+    <div class="stat">
+      <div class="stat-key">总部</div>
+      <div class="stat-val" style="font-size:18px;">{{ cp.headquarters }}</div>
+    </div>
+    {% endif %}
+    {% if cp.founded_year %}
+    <div class="stat">
+      <div class="stat-key">成立</div>
+      <div class="stat-val">{{ cp.founded_year }}<span class="unit">年</span></div>
+    </div>
+    {% endif %}
+    {% if cp.company_size %}
+    <div class="stat">
+      <div class="stat-key">规模</div>
+      <div class="stat-val" style="font-size:18px;">{{ cp.company_size }}</div>
+    </div>
+    {% endif %}
+    {% if cp.funding_stage %}
+    <div class="stat">
+      <div class="stat-key">融资</div>
+      <div class="stat-val" style="font-size:18px;">{{ cp.funding_stage }}</div>
+    </div>
+    {% endif %}
+    {% if cp.total_funding %}
+    <div class="stat">
+      <div class="stat-key">累计</div>
+      <div class="stat-val" style="font-size:18px;">{{ cp.total_funding }}</div>
+    </div>
+    {% endif %}
+  </div>
 
-  {# ---------- Company profile (主营业务 / 产品 / 融资 / 规模) ---------- #}
-  <details>
-    <summary>{{ section_icon('公司画像') }} 公司画像</summary>
-    <div class="section-body">
-      {% set cp = data.company_profile %}
-      {% if not cp %}
-        <p class="empty">公司画像数据缺失。可人工到 <a href="https://baike.baidu.com/" target="_blank" rel="noopener">百度百科</a> / <a href="https://www.itjuzi.com/" target="_blank" rel="noopener">IT桔子</a> / <a href="https://www.qcc.com/" target="_blank" rel="noopener">企查查</a> 搜索 "{{ data.query.company }}" 核实主营业务、融资阶段与规模。</p>
-      {% else %}
-        {% if cp.description %}<p style="margin:0 0 10px 0;font-size:13px;color:var(--text);">{{ cp.description }}</p>{% endif %}
-        <table>
-          {% if cp.official_website %}<tr><th>官网</th><td><a href="{{ cp.official_website }}" target="_blank" rel="noopener">{{ cp.official_website }}</a></td></tr>{% endif %}
-          {% if cp.headquarters %}<tr><th>总部</th><td>{{ cp.headquarters }}</td></tr>{% endif %}
-          {% if cp.founded_year %}<tr><th>成立年份</th><td>{{ cp.founded_year }}</td></tr>{% endif %}
-          {% if cp.company_size %}<tr><th>公司规模</th><td>{{ cp.company_size }}</td></tr>{% endif %}
-          {% if cp.funding_stage %}<tr><th>融资阶段</th><td>{{ cp.funding_stage }}{% if cp.total_funding %} · 累计 {{ cp.total_funding }}{% endif %}</td></tr>{% endif %}
-        </table>
-        {% if cp.main_business %}
-        <h4 style="margin-top:14px;font-size:13px;">主营业务</h4>
+  <div class="chapter-grid">
+    <div>
+      <h3 class="serif" style="font-size:20px;margin:18px 0 8px;">主营业务</h3>
+      {% if cp.main_business %}
         <ul class="bullets">
           {% for m in cp.main_business %}<li>{{ m }}</li>{% endfor %}
         </ul>
-        {% endif %}
-        {% if cp.products %}
-        <h4 style="margin-top:14px;font-size:13px;">主要产品 / 产品线</h4>
+      {% else %}
+        <p class="empty">主营业务未披露。</p>
+      {% endif %}
+
+      <h3 class="serif" style="font-size:20px;margin:24px 0 8px;">主要产品</h3>
+      {% if cp.products %}
         <ul class="bullets">
           {% for p in cp.products %}<li>{{ p }}</li>{% endfor %}
         </ul>
-        {% endif %}
-        {% if cp.industries %}
-        <h4 style="margin-top:14px;font-size:13px;">所属行业</h4>
-        <div>{% for ind in cp.industries %}<span class="chip" style="margin-right:6px;">{{ ind }}</span>{% endfor %}</div>
-        {% endif %}
-        {% if cp.investors %}
-        <h4 style="margin-top:14px;font-size:13px;">主要投资方</h4>
-        <div>{% for inv in cp.investors %}<span class="chip" style="margin-right:6px;">{{ inv }}</span>{% endfor %}</div>
-        {% endif %}
-        {% if cp.prospects %}
-        <h4 style="margin-top:14px;font-size:13px;">发展前景</h4>
-        <p style="font-size:13px;color:var(--text);">{{ cp.prospects }}</p>
-        {% endif %}
+      {% else %}
+        <p class="empty">产品线未披露。</p>
+      {% endif %}
+
+      {% if cp.industries %}
+      <h3 class="serif" style="font-size:20px;margin:24px 0 8px;">所属行业</h3>
+      <div>{% for ind in cp.industries %}<span class="chip chip-neutral" style="margin-right:6px;">{{ ind }}</span>{% endfor %}</div>
+      {% endif %}
+
+      {% if cp.investors %}
+      <h3 class="serif" style="font-size:20px;margin:24px 0 8px;">主要投资方</h3>
+      <div>{% for inv in cp.investors %}<span class="chip" style="margin-right:6px;color:var(--accent);border-color:var(--accent);">{{ inv }}</span>{% endfor %}</div>
       {% endif %}
     </div>
-  </details>
 
-  {# ---------- Judicial risk ---------- #}
-  <details>
-    <summary>{{ section_icon('司法风险') }} 司法风险</summary>
-    <div class="section-body">
-      {% set j = data.judicial_facts %}
-      {% if not j %}
-        <p class="empty">司法数据源在本次抓取中未能取得。建议人工到 <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">wenshu.court.gov.cn</a> 和 <a href="https://zxgk.court.gov.cn/" target="_blank" rel="noopener">zxgk.court.gov.cn</a> 核查「{{ data.query.company }}」涉诉与被执行记录。</p>
-      {% else %}
-        <table>
-          <tr><th>累计案件数</th><td>{{ j.case_count_total or '—' }}</td></tr>
-          <tr><th>近一年案件数</th><td>{{ j.case_count_recent_year or '—' }}</td></tr>
-          <tr><th>被执行记录</th><td>{{ j.enforcement_records or 0 }} 条</td></tr>
-        </table>
-        {% if j.sample_cases %}
-        <h4 style="margin-top:14px;font-size:13px;">样本案件</h4>
-        <ul class="bullets">
-          {% for c in j.sample_cases %}
-          <li>
-            <strong>{{ c.title }}</strong> · {{ c.role }}{% if c.year %} · {{ c.year }}{% endif %}
-            {% if c.url %} · <a href="{{ c.url }}" target="_blank" rel="noopener">链接</a>{% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-        {% endif %}
-      {% endif %}
-    </div>
-  </details>
-
-  {# ---------- Salary & benefits ---------- #}
-  <details>
-    <summary>{{ section_icon('薪酬与福利') }} 薪酬与福利</summary>
-    <div class="section-body">
-      {% set r = data.review_facts %}
-      {% if not r or not r.salary_signals %}
-        <p class="empty">暂无薪酬爆料。可在看准网 / 脉脉 / 牛客 / 一亩三分地 搜索 "{{ data.query.company }}"。</p>
-      {% else %}
-        <table>
-          <thead><tr><th>岗位</th><th>月base (K)</th><th>奖金 (月)</th><th>证据</th><th>来源</th></tr></thead>
-          <tbody>
-            {% for s in r.salary_signals %}
-            <tr>
-              <td>{{ s.position or '—' }}</td>
-              <td>{{ '%.1f'|format(s.base_monthly_k) if s.base_monthly_k is not none else '—' }}</td>
-              <td>{{ s.bonus_months if s.bonus_months is not none else '—' }}</td>
-              <td style="font-size:12px;color:var(--muted);">{{ s.evidence }}</td>
-              <td>{% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">链接</a>{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-
-        {% if salary_dist %}
-        <h4 style="margin-top:14px;font-size:13px;">月薪分布（K）</h4>
-        <div class="bar-chart bar-chart-vertical">
-          {% set max_count = (salary_dist | map(attribute='count') | max) %}
-          {% for b in salary_dist %}
-          <div class="vbar">
-            <div class="vbar-fill" style="height:{% if max_count > 0 %}{{ (b.count / max_count * 100)|int }}{% else %}0{% endif %}%;"></div>
-            <div class="vbar-count">{{ b.count }}</div>
-            <div class="vbar-label">{{ b.label }}</div>
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
-      {% endif %}
-    </div>
-  </details>
-
-  {# ---------- Overtime & work intensity ---------- #}
-  <details>
-    <summary>{{ section_icon('加班与工作强度') }} 加班与工作强度</summary>
-    <div class="section-body">
-      {% set r = data.review_facts %}
-      {% if not r or not r.overtime_signals %}
-        <p class="empty">暂无加班节奏信号。</p>
-      {% else %}
-        {% if overtime_dist %}
-        <h4 style="margin-top:4px;font-size:13px;">节奏模式分布</h4>
-        <div class="bar-chart bar-chart-horizontal">
-          {% set max_count = (overtime_dist | map(attribute='count') | max) %}
-          {% for o in overtime_dist %}
-          <div class="hbar">
-            <div class="hbar-label">{{ o.pattern }}</div>
-            <div class="hbar-track">
-              <div class="hbar-fill intensity-{{ o.intensity }}" style="width:{% if max_count > 0 %}{{ (o.count / max_count * 100)|int }}{% else %}0{% endif %}%;"></div>
+    <aside>
+      <div class="sidebar">
+        <div class="sidebar-label">融资阶梯</div>
+        <div class="ladder">
+          {% for i in range(6) %}
+            <div class="ladder-step {{ 'current' if funding_stage_pos == i else '' }}">
+              <div class="ladder-step-current"></div>
+              <div class="ladder-step-name">
+                {% if i == 0 %}未融资
+                {% elif i == 1 %}天使
+                {% elif i == 2 %}A 轮
+                {% elif i == 3 %}B 轮
+                {% elif i == 4 %}C 及以上
+                {% elif i == 5 %}已上市
+                {% endif %}
+              </div>
             </div>
-            <div class="hbar-count">{{ o.count }}<span class="hbar-pct"> · {{ o.pct }}%</span></div>
+          {% endfor %}
+        </div>
+        <p style="margin:8px 0 0;font-size:12px;color:var(--ink-soft);line-height:1.5;">
+          {% if cp.funding_stage %}
+            当前所处阶段: <strong style="color:var(--accent);">{{ cp.funding_stage }}</strong>
+            {% if cp.total_funding %} · 累计融资 {{ cp.total_funding }}{% endif %}
+          {% else %}
+            融资信息未披露
+          {% endif %}
+        </p>
+      </div>
+
+      {% if cp.description %}
+      <div class="sidebar">
+        <div class="sidebar-label">公司简介</div>
+        <p class="sidebar-quote">
+          {{ cp.description }}
+        </p>
+      </div>
+      {% endif %}
+    </aside>
+  </div>
+
+  {% if cp.source_urls %}
+  <p style="margin-top:14px;font-size:11.5px;color:var(--ink-faint);">
+    来源 · {% for url in cp.source_urls[:5] %}<a href="{{ url }}" target="_blank" rel="noopener" style="margin-right:10px;">{{ url.host }}</a>{% endfor %}
+  </p>
+  {% endif %}
+  {% endif %}
+</section>
+
+{# ====================== CHAPTER II — 工商基本面 ====================== #}
+<section class="chapter" id="ch-business">
+  <header class="chapter-head">
+    <div class="chapter-num">II<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">工商基本面</h2>
+      <p class="chapter-dek">法人、注册资本、经营状态、股权结构——法律登记视角</p>
+    </div>
+  </header>
+
+  {% set b = data.business_facts %}
+  {% if not b %}
+    <p class="empty">未能获取工商数据。建议人工到 <a href="https://www.gsxt.gov.cn/" target="_blank" rel="noopener">gsxt.gov.cn</a> 与 <a href="https://www.qcc.com/" target="_blank" rel="noopener">企查查</a> 核查 "{{ data.query.company }}" 的法人、注册资本、经营状态、是否经营异常。</p>
+  {% else %}
+  <div class="stat-strip">
+    <div class="stat"><div class="stat-key">法人</div><div class="stat-val" style="font-size:18px;">{{ b.legal_rep or '—' }}</div></div>
+    <div class="stat"><div class="stat-key">成立</div><div class="stat-val">{{ b.established_at or '—' }}</div></div>
+    <div class="stat"><div class="stat-key">注册资本</div><div class="stat-val" style="font-size:18px;">{{ b.registered_capital or '—' }}</div></div>
+    <div class="stat"><div class="stat-key">实缴</div><div class="stat-val" style="font-size:18px;">{{ b.paid_in_capital or '—' }}</div></div>
+    <div class="stat"><div class="stat-key">状态</div><div class="stat-val {{ 'good' if b.status == '存续' else ('bad' if b.status in ('注销','吊销','迁出') else '') }}" style="font-size:18px;">{{ b.status or '—' }}</div></div>
+  </div>
+
+  <div class="chapter-grid flip">
+    <aside>
+      {% if b.top_shareholders %}
+      <div class="sidebar">
+        <div class="sidebar-label">股东持股</div>
+        {{ shareholder_donut_svg | safe }}
+        <div class="donut-legend">
+          {% set palette_names = ['暗酒红','焦糖','驼色','浅棕','米灰'] %}
+          {% for s in b.top_shareholders[:5] %}
+          <div class="donut-legend-row">
+            <span class="donut-legend-swatch" style="background: {% if loop.index0 == 0 %}var(--accent){% elif loop.index0 == 1 %}var(--accent-2){% elif loop.index0 == 2 %}var(--caramel){% else %}var(--ink-soft){% endif %};"></span>
+            <span class="donut-legend-label">{{ s.name }}</span>
+            <span class="donut-legend-val">{{ '{:.0%}'.format(s.stake_pct/100) if s.stake_pct is not none else '—' }}</span>
           </div>
           {% endfor %}
         </div>
+      </div>
+      {% endif %}
+    </aside>
+
+    <div>
+      <table>
+        {% if b.address %}<tr><th style="width:110px;">注册地址</th><td>{{ b.address }}</td></tr>{% endif %}
+        {% if b.scope %}<tr><th>经营范围</th><td>{{ b.scope }}</td></tr>{% endif %}
+        {% if b.anomaly_listed %}
+        <tr><th>经营异常</th><td style="color:var(--risk-bad);font-weight:600;">已列入经营异常名录</td></tr>
         {% endif %}
-
-        <h4 style="margin-top:14px;font-size:13px;">原始爆料</h4>
-        <ul class="bullets">
-          {% for o in r.overtime_signals %}
-          <li>
-            <span class="chip chip-{{ {'high':'bad','medium':'warn','low':'good'}[o.intensity] }}">{{ o.pattern }} · {{ {'high':'重','medium':'中','low':'轻'}[o.intensity] }}</span>
-            {% if o.url %} · <a href="{{ o.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-            {% if o.evidence %}
-              <blockquote class="evidence">"{{ o.evidence }}"</blockquote>
-            {% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-      {% endif %}
+        {% if b.external_investments_count is not none %}
+        <tr><th>对外投资</th><td>{{ b.external_investments_count }} 家</td></tr>
+        {% endif %}
+      </table>
     </div>
-  </details>
+  </div>
+  {% endif %}
+</section>
 
-  {# ---------- Team vibe ---------- #}
-  <details>
-    <summary>{{ section_icon('团队氛围与文化') }} 团队氛围与文化</summary>
-    <div class="section-body">
-      {% set r = data.review_facts %}
-      {% if not r or not r.vibe_signals %}
-        <p class="empty">暂无直接氛围信号。</p>
-      {% else %}
-        <ul class="bullets">
-          {% for v in r.vibe_signals %}
-          <li>
-            <span class="chip chip-{{ {'positive':'good','negative':'bad','mixed':'warn'}.get(v.sentiment, 'warn') }}">{{ {'positive':'正面','negative':'负面','mixed':'混合','neutral':'中性'}[v.sentiment] }}</span>
-            {% if v.url %} · <a href="{{ v.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-            {% if v.evidence %}
-              <blockquote class="evidence">"{{ v.evidence }}"</blockquote>
-            {% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-      {% endif %}
+{# ====================== CHAPTER III — 司法风险 ====================== #}
+<section class="chapter" id="ch-judicial">
+  <header class="chapter-head">
+    <div class="chapter-num">III<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">司法风险</h2>
+      <p class="chapter-dek">诉讼、被执行——是历史欠账还是经营常态</p>
     </div>
-  </details>
+  </header>
 
-  {# ---------- JD vs reality ---------- #}
+  {% set j = data.judicial_facts %}
+  {% if not j %}
+    <p class="empty">司法数据源在本次抓取中未能取得。建议人工到 <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">wenshu.court.gov.cn</a> 和 <a href="https://zxgk.court.gov.cn/" target="_blank" rel="noopener">zxgk.court.gov.cn</a> 核查「{{ data.query.company }}」涉诉与被执行记录。</p>
+  {% else %}
+  <div class="stat-strip">
+    <div class="stat"><div class="stat-key">累计案件</div><div class="stat-val {{ 'bad' if (j.case_count_total or 0) > 50 else ('mid' if (j.case_count_total or 0) > 10 else 'good') }}">{{ j.case_count_total if j.case_count_total is not none else '—' }}</div></div>
+    <div class="stat"><div class="stat-key">近一年</div><div class="stat-val {{ 'bad' if (j.case_count_recent_year or 0) > 10 else ('mid' if (j.case_count_recent_year or 0) > 3 else 'good') }}">{{ j.case_count_recent_year if j.case_count_recent_year is not none else '—' }}</div></div>
+    <div class="stat"><div class="stat-key">被执行</div><div class="stat-val {{ 'bad' if (j.enforcement_records or 0) > 0 else 'good' }}">{{ j.enforcement_records or 0 }}<span class="unit">条</span></div></div>
+  </div>
+
+  {% if j.sample_cases %}
+  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">近 6 年案件分布</h3>
+  {{ case_timeline_svg | safe }}
+
+  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">样本案件</h3>
+  <ol class="bullets">
+    {% for c in j.sample_cases[:8] %}
+    <li>
+      <strong>{{ c.title }}</strong> · {{ c.role }}
+      {% if c.year %} · <span class="mono" style="color:var(--ink-soft);font-size:12px;">{{ c.year }} 年</span>{% endif %}
+      {% if c.url %} · <a href="{{ c.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+  {% endif %}
+</section>
+
+{# ====================== CHAPTER IV — 薪酬与福利 ====================== #}
+<section class="chapter" id="ch-salary">
+  <header class="chapter-head">
+    <div class="chapter-num">IV<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">薪酬与福利</h2>
+      <p class="chapter-dek">base / 月数 / 奖金——钱给得如何,数字说了算</p>
+    </div>
+  </header>
+
   {% set r = data.review_facts %}
-  {% if r and r.jd_gap_signals %}
-  <details>
-    <summary>{{ section_icon('岗位真实情况 vs 招聘 JD') }} 岗位真实情况 vs 招聘 JD</summary>
-    <div class="section-body">
-      <ul class="bullets">
-        {% for j in r.jd_gap_signals %}
-        <li>
-          <div><strong>JD 承诺：</strong>{{ j.jd_promise }}</div>
-          <div><strong>实际：</strong>{{ j.reality }}</div>
-          {% if j.url %} · <a href="{{ j.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-  </details>
-  {% endif %}
-
-  {# ---------- Recent news ---------- #}
-  <details>
-    <summary>{{ section_icon('近期舆情') }} 近期舆情</summary>
-    <div class="section-body">
-      {% set n = data.news_facts %}
-      {% if not n or not n.items %}
-        <p class="empty">暂无近期舆情。</p>
-      {% else %}
-        <p style="font-size:13px;color:var(--muted);">整体情感倾向：<strong>{{ {'positive':'偏正面','negative':'偏负面','mixed':'混合','neutral':'中性'}[n.sentiment] }}</strong></p>
-        <ul class="bullets">
-          {% for it in n.items %}
-          <li>
-            <strong>{{ it.title }}</strong>
-            {% if it.published_at %} · <span style="color:var(--muted);font-size:12px;">{{ it.published_at }}</span>{% endif %}
-            {% if it.url %} · <a href="{{ it.url }}" target="_blank" rel="noopener">链接</a>{% endif %}
-            {% if it.summary %}<blockquote class="evidence">"{{ it.summary }}"</blockquote>{% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    </div>
-  </details>
-
-  {# ---------- Interview questions ---------- #}
-  {% if data.interview_questions %}
-  <details open>
-    <summary>{{ section_icon('面试反问清单') }} 面试反问清单</summary>
-    <div class="section-body">
-      {% for q in data.interview_questions %}
-      <div class="interview-q">{{ q }}</div>
+  {% if not r or not r.salary_signals %}
+    <p class="empty">暂无薪酬爆料。可在看准网 / 脉脉 / 牛客 / 一亩三分地 / 小红书 搜索 "{{ data.query.company }}"。</p>
+  {% else %}
+  <table>
+    <thead><tr><th>岗位</th><th>月 base (K)</th><th>奖金 (月)</th><th>证据</th><th>来源</th></tr></thead>
+    <tbody>
+      {% for s in r.salary_signals %}
+      <tr>
+        <td><strong>{{ s.position or '—' }}</strong></td>
+        <td class="mono">{{ '%.1f'|format(s.base_monthly_k) if s.base_monthly_k is not none else '—' }}</td>
+        <td class="mono">{{ s.bonus_months if s.bonus_months is not none else '—' }}</td>
+        <td><span class="muted">{{ s.evidence or '—' }}</span></td>
+        <td>{% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">来源</a>{% else %}—{% endif %}</td>
+      </tr>
       {% endfor %}
+    </tbody>
+  </table>
+
+  {% if salary_dist %}
+  <h3 class="serif" style="font-size:20px;margin:28px 0 10px;">月薪分布</h3>
+  <div class="bars-vertical">
+    {% set max_count = (salary_dist | map(attribute='count') | max) %}
+    {% for b in salary_dist %}
+    <div class="bar-v">
+      <div class="bar-v-count">{{ b.count }}</div>
+      <div class="bar-v-fill" style="height:{% if max_count > 0 %}{{ (b.count / max_count * 100)|int }}{% else %}0{% endif %}%;"></div>
+      <div class="bar-v-label">{{ b.label }}K</div>
     </div>
-  </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}
+</section>
+
+{# ====================== CHAPTER V — 加班与工作强度 ====================== #}
+<section class="chapter" id="ch-overtime">
+  <header class="chapter-head">
+    <div class="chapter-num">V<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">加班与工作强度</h2>
+      <p class="chapter-dek">节奏模式与强度——一周到底要花多少小时在这家公司</p>
+    </div>
+  </header>
+
+  {% set r = data.review_facts %}
+  {% if not r or not r.overtime_signals %}
+    <p class="empty">暂无加班节奏信号。</p>
+  {% else %}
+  <h3 class="serif" style="font-size:20px;margin:0 0 10px;">节奏模式分布</h3>
+  {% if overtime_dist %}
+  <div>
+    {% set total = (overtime_dist | sum(attribute='count')) %}
+    {% for o in overtime_dist %}
+    <div class="dist-row">
+      <span class="dist-row-label">{{ o.pattern }}</span>
+      <span class="dist-row-bar">
+        <span class="dist-row-fill tone-{{ {'high':'bad','medium':'warn','low':'good'}[o.intensity] }}"
+              style="width:{% if total > 0 %}{{ (o.count / total * 100)|int }}{% else %}0{% endif %}%;"></span>
+      </span>
+      <span class="dist-row-meta">{{ o.count }}<span class="pct"> · {{ o.pct }}%</span></span>
+    </div>
+    {% endfor %}
+  </div>
   {% endif %}
 
-  {# ---------- LLM inferences ---------- #}
-  {% if data.findings and data.findings.inferences %}
-  <details>
-    <summary>{{ section_icon('综合推断（LLM 推断，每条带佐证）') }} 综合推断（LLM 推断，每条带佐证）</summary>
-    <div class="section-body">
+  <h3 class="serif" style="font-size:20px;margin:28px 0 10px;">原始爆料</h3>
+  <ul class="bullets">
+    {% for o in r.overtime_signals %}
+    <li>
+      <span class="chip chip-{{ {'high':'bad','medium':'warn','low':'good'}[o.intensity] }}">{{ o.pattern }} · {{ {'high':'重','medium':'中','low':'轻'}[o.intensity] }}</span>
+      {% if o.url %} · <a href="{{ o.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+      {% if o.evidence %}
+        <blockquote class="evidence">"{{ o.evidence }}"</blockquote>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+{# ====================== CHAPTER VI — 团队氛围 ====================== #}
+<section class="chapter" id="ch-vibe">
+  <header class="chapter-head">
+    <div class="chapter-num">VI<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">团队氛围与文化</h2>
+      <p class="chapter-dek">评价里的情绪倾向——一线员工的真实体感</p>
+    </div>
+  </header>
+
+  {% set r = data.review_facts %}
+  {% if not r or not r.vibe_signals %}
+    <p class="empty">暂无直接氛围信号。</p>
+  {% else %}
+  <div class="chapter-grid">
+    <div>
       <ul class="bullets">
-        {% for inf in data.findings.inferences %}
+        {% for v in r.vibe_signals %}
         <li>
-          {{ inf.claim }}
-          {% if inf.grounding_evidence %}<a class="inferred-mark" href="{{ inf.grounding_evidence[0] }}" target="_blank" rel="noopener">佐证</a>{% endif %}
+          <span class="chip chip-{{ {'positive':'good','negative':'bad','mixed':'warn'}.get(v.sentiment, 'neutral') }}">{{ {'positive':'正面','negative':'负面','mixed':'混合','neutral':'中性'}[v.sentiment] }}</span>
+          {% if v.url %} · <a href="{{ v.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+          {% if v.evidence %}
+            <blockquote class="evidence">"{{ v.evidence }}"</blockquote>
+          {% endif %}
         </li>
         {% endfor %}
       </ul>
     </div>
-  </details>
+
+    <aside>
+      <div class="sidebar">
+        <div class="sidebar-label">氛围信号分布</div>
+        {{ vibe_donut_svg | safe }}
+        <div class="donut-legend">
+          {% for c in vibe_counts %}
+          <div class="donut-legend-row">
+            <span class="donut-legend-swatch" style="background: {% if c.tone == 'good' %}var(--risk-good){% elif c.tone == 'bad' %}var(--risk-bad){% elif c.tone == 'warn' %}var(--risk-mid){% else %}var(--caramel){% endif %};"></span>
+            <span class="donut-legend-label">{{ c.label }}</span>
+            <span class="donut-legend-val">{{ c.count }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </aside>
+  </div>
   {% endif %}
 
-  {# ---------- Sources appendix ---------- #}
-  <details>
-    <summary>{{ section_icon('数据来源附录') }} 数据来源附录（{{ sources|length }} 条）</summary>
-    <div class="section-body">
-      {% if not sources %}
-        <p class="empty">暂无来源链接。</p>
-      {% else %}
-      <ul class="sources-list">
-        {% for s in sources %}
-        <li>
-          <img class="favicon" src="{{ favicon_url(s.domain) }}" alt="" loading="lazy"
-               onerror="this.style.visibility='hidden'" />
-          <span class="domain">{{ s.domain }}</span>
-          {% if s.title %}<strong>{{ s.title }}</strong> · {% endif %}
-          <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.url }}</a>
-        </li>
-        {% endfor %}
-      </ul>
+  {% set r2 = data.review_facts %}
+  {% if r2 and r2.jd_gap_signals %}
+  <h3 class="serif" style="font-size:20px;margin:32px 0 10px;">招聘 JD 与真实工作的差距</h3>
+  <div>
+    {% for j in r2.jd_gap_signals %}
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:start;padding:14px 0;border-bottom:1px dashed var(--rule-soft);">
+      <div>
+        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">JD 承诺</div>
+        <div style="font-size:14px;">{{ j.jd_promise }}</div>
+      </div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--accent);font-style:italic;padding-top:6px;">vs</div>
+      <div>
+        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">实际情况</div>
+        <div style="font-size:14px;">{{ j.reality }}</div>
+      </div>
+      {% if j.url %}
+      <div style="grid-column:1 / -1;font-size:12px;">
+        <a href="{{ j.url }}" target="_blank" rel="noopener">来源</a>
+      </div>
       {% endif %}
     </div>
-  </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
 
-  <footer class="footnote">
-    本报告由 jobHunter 自动生成，仅供个人求职参考。请独立判断并自行核实关键事实。
-  </footer>
+{# ====================== CHAPTER VII — 近期舆情 ====================== #}
+<section class="chapter" id="ch-news">
+  <header class="chapter-head">
+    <div class="chapter-num">Ⅶ<span class="slash">/</span><span class="total">Ⅷ</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">近期舆情</h2>
+      <p class="chapter-dek">最近的新闻与公开信号——公司在公众眼中什么样</p>
+    </div>
+  </header>
+
+  {% set n = data.news_facts %}
+  {% if not n or not n.items %}
+    <p class="empty">暂无近期舆情。</p>
+  {% else %}
+  <div class="chapter-takeaway" style="margin-bottom:24px;">
+    <div class="chapter-takeaway-tag">整体情感</div>
+    <div>
+      <strong>{{ {'positive':'偏正面','negative':'偏负面','mixed':'混合','neutral':'中性'}[n.sentiment] }}</strong>
+      · 共 {{ n.items|length }} 条新闻
+      {% if n.source_urls %} · 覆盖 {{ n.source_urls|length }} 个来源{% endif %}
+    </div>
+  </div>
+
+  <div class="timeline">
+    {% for it in news_timeline_items[:10] %}
+    <div class="timeline-item" data-tone="{% if n.sentiment == 'positive' %}good{% elif n.sentiment == 'negative' %}bad{% elif n.sentiment == 'mixed' %}warn{% else %}neutral{% endif %}">
+      <div class="timeline-when">{{ it.when }}</div>
+      <div class="timeline-title">
+        {{ it.title }}
+        {% if it.url %}<a class="timeline-link" href="{{ it.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+      </div>
+      {% if it.summary %}
+      <div class="timeline-summary">{{ it.summary }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+{# ====================== CHAPTER VIII — 面试反问 ====================== #}
+{% if data.interview_questions %}
+<section class="chapter" id="ch-interview">
+  <header class="chapter-head">
+    <div class="chapter-num">Ⅷ<span class="slash">/</span><span class="total">Ⅷ</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">面试反问清单</h2>
+      <p class="chapter-dek">基于本次尽调的真实问题——把球踢回去,问出底色</p>
+    </div>
+  </header>
+  <div class="interview-list">
+    {% for q in data.interview_questions %}
+    <div class="interview-q">
+      <div class="interview-q-num">Q{% if loop.index < 10 %}0{% endif %}{{ loop.index }}</div>
+      <div class="interview-q-text">{{ q }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# ====================== 综合推断 ====================== #}
+{% if data.findings and data.findings.inferences %}
+<section class="chapter" id="ch-infer">
+  <header class="chapter-head">
+    <div class="chapter-num">*<span class="slash">·</span><span class="total">side</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">综合推断</h2>
+      <p class="chapter-dek">LLM 基于本次事实推出的合理推断——每条带佐证,供面试决策参考</p>
+    </div>
+  </header>
+  <div class="inference-list">
+    {% for inf in data.findings.inferences %}
+    <div class="inference-card">
+      <div class="inference-card-mark">”</div>
+      <div>
+        <div class="inference-card-body">{{ inf.claim }}</div>
+        {% if inf.grounding_evidence %}
+        <div class="inference-card-meta">
+          佐证 ·
+          {% for url in inf.grounding_evidence[:3] %}
+            <a href="{{ url }}" target="_blank" rel="noopener">{{ url.host }}</a>{% if not loop.last %} · {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# ====================== 数据缺口 ====================== #}
+{% if data.data_gaps %}
+<section class="chapter" id="ch-gaps">
+  <header class="chapter-head">
+    <div class="chapter-num">!</div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">数据缺口</h2>
+      <p class="chapter-dek">诚实列出本次没拿到的维度——务必人工补齐</p>
+    </div>
+  </header>
+  {% for g in data.data_gaps %}
+  <div class="data-gap"><strong>缺口</strong> · {{ g }}</div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{# ====================== 来源附录 ====================== #}
+<section class="chapter" id="ch-sources">
+  <header class="chapter-head">
+    <div class="chapter-num">Σ</div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">来源附录</h2>
+      <p class="chapter-dek">所有引用 {{ sources|length }} 条,逐条可溯</p>
+    </div>
+  </header>
+  {% if not sources %}
+    <p class="empty">暂无来源链接。</p>
+  {% else %}
+  <ul class="sources-list">
+    {% for s in sources %}
+    <li>
+      <img class="favicon" src="{{ favicon_url(s.domain) }}" alt="" loading="lazy"
+           onerror="this.style.visibility='hidden'" />
+      <span class="domain">{{ s.domain }}</span>
+      <span class="url"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title or s.url }}</a></span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<footer class="footnote">
+  本报告由 jobHunter v0.1.5 自动生成,仅供参考。
+  <span class="small">Generated {{ data.generated_at.strftime('%Y-%m-%d %H:%M UTC') }} · single-file portability</span>
+</footer>
+
 </div>
 </body>
 </html>
