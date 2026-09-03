@@ -182,6 +182,56 @@ class TestNullListCoercion:
         assert a.inferences == []
         assert a.data_gaps == []
 
+    def test_non_list_non_null_coerced_to_empty(self):
+        """LLM occasionally returns non-iterable scalars (int/str/bool) for list fields.
+        Coerce to [] instead of letting pydantic raise ValidationError or downstream
+        crash with 'NoneType is not iterable'."""
+        for bad in (5, "garbage", True, 3.14):
+            r = ReviewFacts.model_validate({
+                "salary_signals": bad,
+                "overtime_signals": bad,
+                "vibe_signals": bad,
+                "jd_gap_signals": bad,
+                "source_urls": bad,
+            })
+            assert r.salary_signals == []
+            assert r.overtime_signals == []
+            assert r.vibe_signals == []
+            assert r.jd_gap_signals == []
+            assert r.source_urls == []
+
+    def test_dict_with_non_list_value_coerced_to_empty(self):
+        """OpenAPI 3.1 quirk: dict envelope where no inner is a list → [] (not the dict)."""
+        r = ReviewFacts.model_validate({
+            "salary_signals": {"foo": "bar"},
+        })
+        assert r.salary_signals == []
+
+    def test_aggregated_findings_non_dict_submodel_coerced_to_none(self):
+        """LLM (esp. via ccswitch) sometimes returns scalars for sub-model fields
+        like 'business'/'reviews'/'judicial'. Pydantic would raise; sanitize first."""
+        from jobhunter.processing.extract import _sanitize_aggregated
+
+        raw = {
+            "company_query_summary": "x",
+            "business": "N/A",       # bad: string instead of dict
+            "reviews": [],            # bad: list instead of dict
+            "news": None,            # ok: None is allowed
+            "judicial": 0,            # bad: int instead of dict
+            "inferences": None,
+            "data_gaps": None,
+        }
+        cleaned = _sanitize_aggregated(raw)
+        assert cleaned["business"] is None
+        assert cleaned["reviews"] is None
+        assert cleaned["news"] is None
+        assert cleaned["judicial"] is None
+        a = AggregatedFindings.model_validate(cleaned)
+        assert a.business is None
+        assert a.reviews is None
+        assert a.news is None
+        assert a.judicial is None
+
 
 class TestInferredClaimGrounding:
     """ccswitch / relay models sometimes wrap single-element arrays as

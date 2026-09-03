@@ -13,6 +13,15 @@ REVIEW_DOMAINS: list[str] = [
     "xiaohongshu.com",
     "nowcoder.com",
     "douban.com",
+    "bilibili.com",
+    "tieba.baidu.com",
+    "v2ex.com",
+    "hupu.com",
+    "1point3acres.com",
+    "glassdoor.com",
+    "lagou.com",
+    "zhipin.com",
+    "dianping.com",
 ]
 
 NEWS_DOMAINS: list[str] = [
@@ -23,6 +32,7 @@ NEWS_DOMAINS: list[str] = [
     "sina.cn",
     "qq.com",
     "163.com",
+    "douyin.com",
 ]
 
 

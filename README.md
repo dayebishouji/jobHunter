@@ -83,7 +83,7 @@ pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.3）
+## 已知限制（v0.1.4）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月，每次完整跑 30–60 credits

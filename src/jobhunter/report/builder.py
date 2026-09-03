@@ -69,15 +69,16 @@ def _collect_sources(data: ReportData) -> list[SourceEntry]:
                 seen[key] = SourceEntry(domain=_domain_of(url), title="", url=url)
     # Add title hints from review/news/judicial items where available
     if f is not None and f.reviews is not None:
-        for s in list(f.reviews.salary_signals) + list(f.reviews.overtime_signals) + list(f.reviews.vibe_signals):
+        signals = (f.reviews.salary_signals or []) + (f.reviews.overtime_signals or []) + (f.reviews.vibe_signals or [])
+        for s in signals:
             if s.url and str(s.url) not in seen:
                 seen[str(s.url)] = SourceEntry(domain=_domain_of(s.url), title=getattr(s, "evidence", "")[:60], url=s.url)
     if f is not None and f.news is not None:
-        for it in f.news.items:
+        for it in (f.news.items or []):
             if it.url and str(it.url) not in seen:
                 seen[str(it.url)] = SourceEntry(domain=_domain_of(it.url), title=it.title, url=it.url)
     if f is not None and f.judicial is not None:
-        for c in f.judicial.sample_cases:
+        for c in (f.judicial.sample_cases or []):
             if c.url and str(c.url) not in seen:
                 seen[str(c.url)] = SourceEntry(domain=_domain_of(c.url), title=c.title, url=c.url)
     return sorted(seen.values(), key=lambda s: (s.domain, s.title or ""))

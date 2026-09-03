@@ -29,19 +29,28 @@ class NullTolerantListBase(BaseModel):
         if not isinstance(data, dict):
             return data
         for field_name, field_info in cls.model_fields.items():
+            # Only guard fields whose declared default is a list
+            if field_info.default_factory is None:
+                continue
+            default = field_info.default_factory()
+            if not isinstance(default, list):
+                continue
             v = data.get(field_name)
             if v is None:
-                default = field_info.default_factory() if field_info.default_factory is not None else None
-                if isinstance(default, list):
-                    data[field_name] = []
-            elif isinstance(v, dict) and field_info.default_factory is not None:
-                # Unwrap {"item": [...]} → [...] when the field expects a list
-                default = field_info.default_factory()
-                if isinstance(default, list):
-                    for inner in v.values():
-                        if isinstance(inner, list):
-                            data[field_name] = inner
-                            break
+                data[field_name] = []
+            elif isinstance(v, list):
+                pass  # already a list
+            elif isinstance(v, dict):
+                # Unwrap {"item": [...]} → [...] (OpenAPI 3.1 single-item-array quirk)
+                unwrapped: list | None = None
+                for inner in v.values():
+                    if isinstance(inner, list):
+                        unwrapped = inner
+                        break
+                data[field_name] = unwrapped if unwrapped is not None else []
+            else:
+                # Anything else (int, str, bool, …) → empty list
+                data[field_name] = []
         return data
 
 BusinessStatus = Literal["存续", "注销", "吊销", "迁出", "其他"]

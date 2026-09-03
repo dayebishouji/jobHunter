@@ -130,7 +130,7 @@ async def consolidate(
             judicial=judicial if isinstance(judicial, JudicialFacts) else None,
             data_gaps=_auto_gaps(facets),
         )
-    agg = AggregatedFindings.model_validate(raw)
+    agg = AggregatedFindings.model_validate(_sanitize_aggregated(raw))
     # Guarantee per-domain facts are set even if LLM omitted them
     agg.business = agg.business or (business if isinstance(business, BusinessFacts) else None)
     agg.reviews = agg.reviews or (reviews if isinstance(reviews, ReviewFacts) else None)
@@ -153,3 +153,17 @@ def _auto_gaps(facets: dict[str, object | None]) -> list[str]:
 def parse_interview_lines(text: str) -> list[str]:
     """Split a free-text answer into non-empty stripped lines."""
     return [ln.strip().lstrip("0123456789.、) ").strip() for ln in text.splitlines() if ln.strip()]
+
+
+def _sanitize_aggregated(raw: dict) -> dict:
+    """LLM (esp. via ccswitch / relay) sometimes returns scalars or other
+    non-dict values for sub-model fields. Pydantic rejects these with
+    'Input should be a valid dictionary or instance of X'. Coerce to None
+    so the field falls back to its default.
+    """
+    cleaned = dict(raw)
+    for key in ("business", "reviews", "news", "judicial"):
+        v = cleaned.get(key)
+        if v is not None and not isinstance(v, dict):
+            cleaned[key] = None
+    return cleaned

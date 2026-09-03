@@ -10,6 +10,7 @@
 
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
+scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
 .venv/Scripts/python.exe -m pytest                       # 63 tests
 ```
 
@@ -32,12 +33,14 @@
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.1.3）
+## 当前边界（v0.1.4）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
-- ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap
+- ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
 - LLM 偶有 enum 同义词（"在业"→存续 / "重"→high），已加 per-field 校验器
+- LLM 偶对 Optional 子模型字段（business / reviews / judicial）返回非 dict 值，`consolidate` 步调 `_sanitize_aggregated` 清洗成 None
 - consolidation 步 max_tokens 已 8000（默认 4096 不够）
+- 交互模式在 Python 3.14 下用 `loop.run_in_executor` 跑 InquirerPy，绕开嵌套 asyncio.run
 
 ## 下次接手该知道
 

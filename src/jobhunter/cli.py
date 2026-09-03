@@ -136,7 +136,11 @@ async def _interactive_flow() -> None:
         )
         raise click.exceptions.Exit(code=2)
 
-    query = _ask_query_interactive()
+    # InquirerPy → prompt_toolkit's Application.run() internally calls asyncio.run(),
+    # which is illegal to nest inside our own running loop (Python 3.14 enforces this).
+    # Run prompts in a worker thread so they get their own fresh loop.
+    loop = asyncio.get_running_loop()
+    query = await loop.run_in_executor(None, _ask_query_interactive)
     if query is None:
         raise click.exceptions.Exit(code=0)
 
@@ -166,7 +170,7 @@ async def _interactive_flow() -> None:
     console.print(f"[green]✓[/green] 报告生成：{artifacts.path}")
     console.print(f"  耗时成本：约 ${artifacts.cost_usd:.4f}（输入 {artifacts.tokens_in} / 输出 {artifacts.tokens_out} tokens）")
 
-    if _ask_open_browser(artifacts.path):
+    if await loop.run_in_executor(None, _ask_open_browser, artifacts.path):
         from jobhunter.utils.browser import open_in_browser
         open_in_browser(artifacts.path)
 
