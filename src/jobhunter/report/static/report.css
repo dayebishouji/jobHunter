@@ -1,6 +1,6 @@
 /* jobHunter report v0.1.5 — editorial terminal hybrid
- * Warm paper palette: 焦糖 / 暗酒红 / 米白
- * Typography: Cormorant Garamond (display), Inter (body), IBM Plex Mono (data)
+ * Palette: 纯白纸张 + 暖米白深色块 + 暗酒红 / 焦糖点缀
+ * Typography: Cormorant Garamond (display), IBM Plex Sans (body), IBM Plex Mono (data)
  * Embedded via Jinja2; single-file portability.
  */
 
@@ -8,15 +8,15 @@
 
 :root {
   /* Paper & ink */
-  --paper:        #f4ece0;   /* 米白纸张 */
-  --paper-deep:   #ebe1d0;   /* 深一档纸张,section 底色 */
-  --ink:          #2a1f15;   /* 深棕墨色,主文字 */
-  --ink-soft:     #6b5641;   /* 次级文字 */
-  --ink-faint:    #9a8369;   /* 三级文字 / 引线 */
+  --paper:        #ffffff;   /* 纯白纸张 — 易读 */
+  --paper-deep:   #f6f1e8;   /* 暖米白,sidebar 底色 */
+  --ink:          #1f1a14;   /* 深棕墨色,主文字 */
+  --ink-soft:     #5d5040;   /* 次级文字 */
+  --ink-faint:    #8b7c69;   /* 三级文字 / 引线 */
 
   /* Rules & shadows */
-  --rule:         #c9b89c;   /* 主分隔线 */
-  --rule-soft:    #ddcfb4;   /* 弱分隔线 */
+  --rule:         #d8cfc0;   /* 主分隔线 */
+  --rule-soft:    #ece6d8;   /* 弱分隔线 */
   --shadow-paper: 0 1px 0 rgba(60,40,20,.05),
                   0 14px 32px -18px rgba(60,40,20,.18);
 
@@ -27,13 +27,13 @@
 
   /* Risk palette */
   --risk-good:    #4f6a3a;
-  --risk-good-bg: #d8dfb9;
+  --risk-good-bg: #e6ecce;
   --risk-mid:     #b06b1c;
-  --risk-mid-bg:  #f0d9a8;
+  --risk-mid-bg:  #f5e3c2;
   --risk-bad:     #8a2521;
-  --risk-bad-bg:  #e8c2bb;
+  --risk-bad-bg:  #f0d3cb;
 
-  --code-bg:      #ede2cf;
+  --code-bg:      #f5f0e3;
   --link:         #7c1d24;
   --link-hover:   #4a1217;
 }
@@ -42,7 +42,7 @@
   :root {
     --paper:        #1b1610;
     --paper-deep:   #211a12;
-    --ink:          #ebe1d0;
+    --ink:          #f1eadb;
     --ink-soft:     #b39a7a;
     --ink-faint:    #856e51;
     --rule:         #4a3a26;

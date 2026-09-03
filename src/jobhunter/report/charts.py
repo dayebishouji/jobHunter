@@ -15,15 +15,16 @@ from jobhunter.models.facts import (
 )
 from jobhunter.models.scoring import AxisScore, RiskAxis, axis_color
 
-# ---------- Palette (warm editorial) ----------
+# ---------- Palette (editorial — white paper, warm accents) ----------
 
 # These mirror the CSS custom properties so server-side SVG embeds match.
 _PALETTE = {
-    "ink":       "#2a1f15",
-    "ink_soft":  "#6b5641",
-    "ink_faint": "#9a8369",
-    "rule":      "#c9b89c",
-    "paper":     "#f4ece0",
+    "ink":       "#1f1a14",
+    "ink_soft":  "#5d5040",
+    "ink_faint": "#8b7c69",
+    "rule":      "#d8cfc0",
+    "paper":     "#ffffff",
+    "paper_deep": "#f6f1e8",
     "accent":    "#7c1d24",   # 暗酒红
     "accent_2":  "#b06b1c",   # 焦糖
     "caramel":   "#c89762",
