@@ -65,6 +65,24 @@ class Shareholder(BaseModel):
     stake_pct: float | None = None
     contribution: str | None = None
 
+    @field_validator("stake_pct", mode="before")
+    @classmethod
+    def _coerce_pct(cls, v):
+        """LLM may return '35%' / '约 40' / '不详'. Pull a number; else None."""
+        if v is None or isinstance(v, bool):
+            return None if v is None else float(v)
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            import re
+            m = re.search(r"\d+(\.\d+)?", v.replace(",", ""))
+            if m:
+                try:
+                    return float(m.group())
+                except (ValueError, TypeError):
+                    return None
+        return None
+
 
 class BusinessFacts(NullTolerantListBase):
     legal_rep: str | None = None
@@ -78,6 +96,27 @@ class BusinessFacts(NullTolerantListBase):
     external_investments_count: int | None = None
     anomaly_listed: bool | None = None
     source_urls: list[HttpUrl] = Field(default_factory=list)
+
+    @field_validator("external_investments_count", mode="before")
+    @classmethod
+    def _coerce_int(cls, v):
+        """LLM often returns numeric counts as strings ("约 8 起", "10+", "未知").
+        Coerce parseable strings to int; otherwise None."""
+        if v is None or isinstance(v, bool):
+            return None if v is None else int(v)
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, str):
+            import re
+            m = re.search(r"\d+", v.replace(",", ""))
+            if m:
+                try:
+                    return int(m.group())
+                except (ValueError, TypeError):
+                    return None
+        return None
 
     @field_validator("status", mode="before")
     @classmethod
@@ -106,6 +145,28 @@ class SalarySignal(BaseModel):
     salary_total_months: int | None = None
     evidence: str = ""
     url: HttpUrl | None = None
+
+    @field_validator("base_monthly_k", "bonus_months", mode="before")
+    @classmethod
+    def _coerce_float(cls, v):
+        """LLM often returns non-numeric strings ("面议", "20k-40k", "未知")
+        for numeric fields. Coerce parseable strings to float; anything we
+        can't read becomes None so the signal still validates."""
+        if v is None or isinstance(v, bool):
+            return None if v is None else float(v)
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            s = v.strip()
+            # Pull a leading/first numeric token from strings like "20k-40k" or "20K"
+            import re
+            m = re.search(r"-?\d+(\.\d+)?", s.replace(",", ""))
+            if m:
+                try:
+                    return float(m.group(0))
+                except (ValueError, TypeError):
+                    return None
+        return None
 
     @field_validator("salary_total_months", mode="before")
     @classmethod
@@ -326,6 +387,27 @@ class JudicialFacts(NullTolerantListBase):
     sample_cases: list[CaseItem] = Field(default_factory=list)
     enforcement_records: int | None = None
     source_urls: list[HttpUrl] = Field(default_factory=list)
+
+    @field_validator("case_count_total", "case_count_recent_year", "enforcement_records", mode="before")
+    @classmethod
+    def _coerce_int(cls, v):
+        """LLM often returns numeric counts as strings ("约 8 起", "10+", "未知").
+        Coerce parseable strings to int; otherwise None."""
+        if v is None or isinstance(v, bool):
+            return None if v is None else int(v)
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, str):
+            import re
+            m = re.search(r"\d+", v.replace(",", ""))
+            if m:
+                try:
+                    return int(m.group())
+                except (ValueError, TypeError):
+                    return None
+        return None
 
 
 # ---------- Aggregated (post-consolidation) ----------

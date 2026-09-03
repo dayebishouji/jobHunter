@@ -139,6 +139,62 @@ class TestSalarySignalCoercion:
         s = SalarySignal.model_validate({"salary_total_months": "???"})
         assert s.salary_total_months is None
 
+    # --- base_monthly_k / bonus_months defensive coercion ---
+
+    def test_base_monthly_k_numeric_string_parses(self):
+        s = SalarySignal.model_validate({"base_monthly_k": "28"})
+        assert s.base_monthly_k == 28.0
+
+    def test_base_monthly_k_range_string_takes_first_number(self):
+        s = SalarySignal.model_validate({"base_monthly_k": "20k-40k"})
+        assert s.base_monthly_k == 20.0
+
+    def test_base_monthly_k_chinese_unknown_becomes_none(self):
+        s = SalarySignal.model_validate({"base_monthly_k": "面议"})
+        assert s.base_monthly_k is None
+
+    def test_bonus_months_string_parses(self):
+        s = SalarySignal.model_validate({"bonus_months": "3.5"})
+        assert s.bonus_months == 3.5
+
+
+class TestShareholderCoercion:
+    """LLM may return '35%' / '约 40' for stake_pct."""
+
+    def test_stake_pct_with_percent_sign(self):
+        s = Shareholder.model_validate({"name": "X", "stake_pct": "35%"})
+        assert s.stake_pct == 35.0
+
+    def test_stake_pct_unparseable_becomes_none(self):
+        s = Shareholder.model_validate({"name": "X", "stake_pct": "不详"})
+        assert s.stake_pct is None
+
+
+class TestJudicialCoercion:
+    """LLM may return '约 8 起' / '10+' for count fields."""
+
+    def test_case_count_total_chinese_string(self):
+        j = JudicialFacts.model_validate({"case_count_total": "约 8 起"})
+        assert j.case_count_total == 8
+
+    def test_case_count_recent_year_plus_sign(self):
+        j = JudicialFacts.model_validate({"case_count_recent_year": "10+"})
+        assert j.case_count_recent_year == 10
+
+    def test_enforcement_records_unknown_becomes_none(self):
+        j = JudicialFacts.model_validate({"enforcement_records": "未知"})
+        assert j.enforcement_records is None
+
+
+class TestBusinessExternalInvestmentsCoercion:
+    def test_string_count_parses(self):
+        b = BusinessFacts.model_validate({"external_investments_count": "12 家"})
+        assert b.external_investments_count == 12
+
+    def test_unparseable_becomes_none(self):
+        b = BusinessFacts.model_validate({"external_investments_count": "无数据"})
+        assert b.external_investments_count is None
+
 
 class TestNullListCoercion:
     """LLM returns null for list fields whose schema is list[...] — coerce to []."""
