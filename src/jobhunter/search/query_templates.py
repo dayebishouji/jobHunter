@@ -53,29 +53,38 @@ JUDICIAL_DOMAINS: list[str] = [
 
 
 def review_queries(q: CompanyQuery) -> list[str]:
-    """Generate the set of review-oriented queries for one company."""
-    c = q.company
+    """Generate the set of review-oriented queries for one company.
+
+    UGC posts (脉脉 / 知乎 / 小红书 / 看准) usually refer to companies by
+    abbreviation or English name, not the full legal name. To improve recall,
+    we expand queries across the company name + LLM-generated aliases (capped
+    at 4 total names to keep Tavily cost bounded).
+    """
     p = q.position.strip()
     city = q.city.strip()
-    base = [c, p] if p else [c]
-    label = " ".join(base)
+    names = _all_names(q)
 
-    queries = [
-        f'"{c}" 加班',
-        f'"{c}" 离职率',
-        f'"{c}" 脉脉 爆料',
-        f'"{c}" 看准 工资',
-        f'"{c}" 知乎',
-        f'"{c}" 体验',
-    ]
+    queries: list[str] = []
+    for n in names:
+        queries.extend([
+            f'"{n}" 加班',
+            f'"{n}" 离职率',
+            f'"{n}" 脉脉 爆料',
+            f'"{n}" 看准 工资',
+            f'"{n}" 知乎',
+            f'"{n}" 体验',
+        ])
     if p:
-        queries.append(f'"{c}" {p} 体验')
-        queries.append(f'{p} {c} {"避雷" if not city else f"{city} 避雷"}')
+        for n in names:
+            queries.append(f'"{n}" {p} 体验')
+            queries.append(f'{p} {n} {"避雷" if not city else f"{city} 避雷"}')
     return queries
 
 
 def news_queries(q: CompanyQuery) -> list[str]:
-    """Generate news/PR-oriented queries for one company."""
+    """Generate news/PR-oriented queries for one company. Uses the full legal
+    name only — news aggregators (36kr / huxiu / weibo / etc.) typically index
+    articles under the company's official name."""
     c = q.company
     year = "2026"
     return [
@@ -87,7 +96,9 @@ def news_queries(q: CompanyQuery) -> list[str]:
 
 
 def business_queries(q: CompanyQuery) -> list[str]:
-    """Business registration / company info queries (aiqicha / tianyancha / qcc / creditchina)."""
+    """Business registration / company info queries (aiqicha / tianyancha / qcc /
+    creditchina). Full legal name only — aggregator pages key on official
+    registered names, not casual abbreviations."""
     c = q.company
     return [
         f'"{c}" 工商信息',
@@ -98,7 +109,8 @@ def business_queries(q: CompanyQuery) -> list[str]:
 
 
 def judicial_queries(q: CompanyQuery) -> list[str]:
-    """Judicial risk / court records queries."""
+    """Judicial risk / court records queries. Full legal name only — court
+    filings identify parties by their registered name, not by casual alias."""
     c = q.company
     return [
         f'"{c}" 裁判文书',
@@ -106,3 +118,17 @@ def judicial_queries(q: CompanyQuery) -> list[str]:
         f'"{c}" 被执行',
         f'"{c}" 失信被执行人',
     ]
+
+
+def _all_names(q: CompanyQuery, max_n: int = 4) -> list[str]:
+    """Return [company, *aliases] deduped and capped. Order preserved."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for n in [q.company] + list(q.aliases):
+        s = n.strip()
+        if s and s not in seen and len(s) <= 50:
+            seen.add(s)
+            out.append(s)
+        if len(out) >= max_n:
+            break
+    return out

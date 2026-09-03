@@ -1,6 +1,6 @@
 """LLM layer — Anthropic wrapper, Chinese prompts, tool schemas."""
 
-from jobhunter.llm.client import LLMClient, safe_dumps, to_json_schema
+from jobhunter.llm.client import LLMClient, list_company_aliases, safe_dumps, to_json_schema
 from jobhunter.llm.prompts import (
     CONSOLIDATE_SYSTEM,
     CONSOLIDATE_USER_TEMPLATE,
@@ -26,6 +26,7 @@ __all__ = [
     "INTERVIEW_USER_TEMPLATE",
     "LLMClient",
     "extract_tool_spec",
+    "list_company_aliases",
     "safe_dumps",
     "to_json_schema",
 ]

@@ -17,6 +17,20 @@ logger = logging.getLogger(__name__)
 _PRICE_INPUT_PER_M = 3.0
 _PRICE_OUTPUT_PER_M = 15.0
 
+# Schema used by get_company_aliases(). Inline to avoid a separate file.
+_ALIASES_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "aliases": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "常见缩写 / 英文名 / 子品牌（不含全称本身）",
+            "maxItems": 3,
+        }
+    },
+    "required": ["aliases"],
+}
+
 
 class LLMClient:
     """Async Anthropic client with structured-output and budget tracking."""
@@ -153,6 +167,38 @@ def to_json_schema(model_cls: type) -> dict[str, Any]:
     # Anthropic requires top-level "type": "object"; some Pydantic versions omit it for primitives.
     schema.setdefault("type", "object")
     return schema
+
+
+async def list_company_aliases(
+    llm: "LLMClient", company_name: str
+) -> list[str]:
+    """Ask LLM for 1-3 common abbreviations / English names / sub-brands
+    that 打工人 might use when referring to this company. Returns [] on failure
+    or if the budget is exhausted. Used to expand reviews-domain queries beyond
+    strict exact-match quotes."""
+    if not company_name.strip():
+        return []
+    raw = await llm.structured_call(
+        system=(
+            "你是中文公司别名专家。给定一个中国公司全称，列出最多 3 个打工人日常可能用的"
+            "**简称 / 英文名 / 子品牌**（如「阿里巴巴集团」→「阿里」「Alibaba」「淘宝」）。"
+            "不要返回公司全称本身。只返回在 UGC 帖子中真正常见的别名；不确定就少给。"
+        ),
+        user=f"公司全称：{company_name}",
+        tool_name="list_company_aliases",
+        tool_description="列出常见简称 / 英文名 / 子品牌",
+        tool_schema=_ALIASES_SCHEMA,
+    )
+    if not raw or not isinstance(raw.get("aliases"), list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for a in raw["aliases"]:
+        s = str(a).strip()
+        if s and s != company_name and s not in seen and len(s) <= 50:
+            seen.add(s)
+            out.append(s)
+    return out[:3]
 
 
 def safe_dumps(d: dict[str, Any]) -> str:

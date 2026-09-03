@@ -17,6 +17,10 @@ class CompanyQuery(BaseModel):
     city: str = Field(default="", max_length=100, description="城市（可选）")
     include_judicial: bool = Field(default=True, description="是否抓司法风险")
     include_news: bool = Field(default=True, description="是否抓近期舆情")
+    aliases: list[str] = Field(
+        default_factory=list,
+        description="LLM 自动生成的常见缩写 / 英文名 / 子品牌（用于 reviews 域查询展开）",
+    )
 
     def display(self) -> str:
         parts = [self.company]

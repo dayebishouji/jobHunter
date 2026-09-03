@@ -18,6 +18,7 @@ from jobhunter.llm import (
     INTERVIEW_USER_TEMPLATE,
     LLMClient,
     extract_tool_spec,
+    list_company_aliases,
 )
 from jobhunter.llm.client import safe_dumps
 from jobhunter.models.facts import (
@@ -74,6 +75,18 @@ async def run(
 
     cache = FileCache()
     tavily = TavilyClient(settings, cache)
+    llm = LLMClient(settings)
+
+    # Generate aliases (abbreviations / English / sub-brands) before searching so
+    # the reviews-domain query template can expand beyond exact-match quotes.
+    # Best-effort: on failure, the run proceeds with only the full name.
+    if not query.aliases:
+        try:
+            query = query.model_copy(
+                update={"aliases": await list_company_aliases(llm, query.company)}
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("alias generation failed: %s", e)
 
     async with make_client() as http:
         collectors = build_all(settings, tavily=tavily, http=http)
@@ -81,7 +94,6 @@ async def run(
 
     by_domain = normalize(results)
 
-    llm = LLMClient(settings)
     facets = await extract_all_domains(llm, by_domain)
 
     findings = await consolidate(llm, query, facets)

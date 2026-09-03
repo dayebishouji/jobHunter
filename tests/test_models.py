@@ -29,6 +29,7 @@ class TestCompanyQuery:
         assert q.company == "AC"
         assert q.position == ""
         assert q.city == ""
+        assert q.aliases == []  # default empty
 
     def test_display(self):
         q = CompanyQuery(company="阿里云", position="后端", city="杭州")
@@ -37,6 +38,12 @@ class TestCompanyQuery:
     def test_empty_company_rejected(self):
         with pytest.raises(Exception):
             CompanyQuery(company="")
+
+    def test_aliases_default_and_round_trip(self):
+        q = CompanyQuery(company="阿里云", aliases=["aliyun", "阿里"])
+        assert q.aliases == ["aliyun", "阿里"]
+        again = CompanyQuery.model_validate_json(q.model_dump_json())
+        assert again.aliases == ["aliyun", "阿里"]
 
 
 class TestFacts:

@@ -169,6 +169,8 @@ async def _interactive_flow() -> None:
 
     console.print(f"[green]✓[/green] 报告生成：{artifacts.path}")
     console.print(f"  耗时成本：约 ${artifacts.cost_usd:.4f}（输入 {artifacts.tokens_in} / 输出 {artifacts.tokens_out} tokens）")
+    if query.aliases:
+        console.print(f"  reviews 域额外搜索别名：{', '.join(query.aliases)}")
 
     if await loop.run_in_executor(None, _ask_open_browser, artifacts.path):
         from jobhunter.utils.browser import open_in_browser
@@ -231,6 +233,8 @@ def run_cmd(
         progress.update(task, description="完成")
 
     console.print(f"[green]✓[/green] {artifacts.path}")
+    if q.aliases:
+        console.print(f"  reviews 域额外搜索别名：{', '.join(q.aliases)}")
     if not no_open:
         from jobhunter.utils.browser import open_in_browser
         open_in_browser(artifacts.path)
