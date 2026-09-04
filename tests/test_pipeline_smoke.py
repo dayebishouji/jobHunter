@@ -145,4 +145,5 @@ async def test_end_to_end_pipeline(tmp_path: Path, fake_tavily, fake_llm):
 
     # 5. Tavily was actually called
     assert fake_tavily, "Tavily should have been called"
-    assert any("加班" in q[0] for q in fake_tavily)
+    # v0.1.19 — pure name-only queries; no "加班" suffix anymore.
+    assert any("A 公司" in q[0] for q in fake_tavily)

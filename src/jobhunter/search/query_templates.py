@@ -314,55 +314,44 @@ JUDICIAL_DOMAINS: list[str] = [
 ]
 
 
-def review_queries(q: CompanyQuery) -> list[str]:
-    """Generate the set of review-oriented queries for one company.
+def review_queries(q: CompanyQuery) -> list[tuple[str, list[str]]]:
+    """v0.1.19 — Pure name-only UGC recall.
 
-    UGC posts (脉脉 / 知乎 / 小红书 / 看准) usually refer to companies by
-    abbreviation or English name, not the full legal name. To improve recall,
-    we expand queries across the company name + LLM-generated aliases (capped
-    at 4 total names to keep Tavily cost bounded).
+    Returns one query per (domain × name) pair. Each query is just the quoted
+    company name — NO keywords like 加班 / 离职率. The LLM extraction step
+    (`processing.extract`) is responsible for finding salary / overtime /
+    vibe / turnover signals in raw content regardless of how the author phrased
+    them ("压货款 / 跑路 / ICU / 摆烂" all map to structured signals).
 
-    Slang queries (LLM-generated colloquial recall terms — "ICU / 内卷 / 摆烂
-    / 跑路 / PUA ...") are emitted once each without name prefix; they are
-    site-allowlisted so the search engine applies the same UGC filter, and
-    we cap their count to keep Tavily cost bounded.
+    Why this works where hand-tuned keyword queries failed:
+    - UGC authors rarely use the keyword we guessed. 棒谷科技's 小红书 post may
+      say "广州这家跨境大卖最近裁员太狠了" with no 加班 / 离职率 anywhere.
+    - Per-domain allowlist means Tavily returns only results from THAT forum,
+      so each query is focused without filtering our recall.
+
+    Cost contract:
+    - Up to `MAX_DOMAINS_PER_RUN` (15) domains from position-aware allowlist
+    - Up to `_all_names(max_n=2)` names (primary + 1 alias; local heuristic
+      expansion applied if LLM returned empty aliases)
+    - Total queries: ≤ 30 per company. About the same as v0.1.18 2-pass (24+3)
+      but per-query result is more focused → LLM extraction step has better
+      signal-to-noise on the raw content it processes.
+
+    Returns list of (query_text, allowlist_for_this_query) tuples. Each tuple
+    represents a single Tavily call.
     """
-    p = q.position.strip()
-    city = q.city.strip()
-    names = _all_names(q)
-
-    queries: list[str] = []
-    for n in names:
-        queries.extend([
-            f'"{n}" 加班',
-            f'"{n}" 离职率',
-            f'"{n}" 脉脉 爆料',
-            f'"{n}" 看准 工资',
-            f'"{n}" 知乎',
-            f'"{n}" 体验',
-        ])
-    if p:
+    names = _all_names(q, max_n=2)
+    domains = domains_for_position(q.position)[:MAX_DOMAINS_PER_RUN]
+    pairs: list[tuple[str, list[str]]] = []
+    for d in domains:
         for n in names:
-            queries.append(f'"{n}" {p} 体验')
-            queries.append(f'{p} {n} {"避雷" if not city else f"{city} 避雷"}')
+            pairs.append((f'"{n}"', [d]))
+    return pairs
 
-    # Slang recall: each term gets the primary company name as a soft context
-    # anchor so we still bias toward this company, but the term itself drives
-    # the search (not the quoted company name). Cap at 8 to bound Tavily cost.
-    seen: set[str] = set()
-    for raw in (q.slang_queries or [])[:8]:
-        term = raw.strip()
-        if not term or term in seen:
-            continue
-        seen.add(term)
-        # Primary name + slang term keeps Tavily focused on this company while
-        # letting the slang drive vocabulary recall.
-        queries.append(f'{q.company} {term}')
-        # Also a bare slang query — broader recall when a post doesn't even
-        # mention the company name (e.g., a rant that uses just "我们部门").
-        queries.append(term)
 
-    return queries
+# v0.1.19 — cap on per-company domain count for the name-only pass. Tuned to
+# keep cost under ~60 Tavily credits per run (15 domains × 2 names × ~2 credits).
+MAX_DOMAINS_PER_RUN = 15
 
 
 def news_queries(q: CompanyQuery) -> list[str]:
@@ -495,21 +484,8 @@ def _local_name_variants(company: str) -> list[str]:
 
 
 def review_pass2_queries(q: CompanyQuery, max_n: int = 3) -> list[str]:
-    """v0.1.18 — Broad-recall queries run without the Tavily include_domains
-    filter when pass-1 returns too few hits. These are the queries most likely
-    to surface UGC (小红书 / 脉脉职言 / 知乎) that Tavily can index but that
-    the strict allowlist rejects.
-
-    Capped at `max_n` to keep credits bounded (each pass-2 query costs ~3x a
-    pass-1 query because the search is unfiltered).
+    """DEPRECATED in v0.1.19 — superseded by `review_queries` returning
+    per-domain name-only pairs. Returns an empty list. Kept as a stub so any
+    external caller still imports successfully.
     """
-    names = _all_names(q, max_n=2)
-    out: list[str] = []
-    for n in names:
-        out.extend([
-            f'"{n}" 知乎',
-            f'"{n}" 小红书',
-            f'"{n}" 体验 评价',
-        ])
-    # Take only the first max_n to bound cost.
-    return out[:max_n]
+    return []

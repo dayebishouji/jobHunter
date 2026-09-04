@@ -99,55 +99,40 @@ class TestAllNamesFallback:
 
 
 class TestReviewQueriesUseFallback:
-    """v0.1.18 — `review_queries` benefits from the heuristic automatically."""
+    """v0.1.18 — `review_queries` benefits from the heuristic automatically.
+    v0.1.19 — Updated to extract text from (text, allowlist) tuples."""
 
     def test_queries_include_stripped_name(self):
         # Without aliases the queries used to be all "棒谷科技 ..." — which
         # matches nothing in UGC. Now they include "棒谷 ..." forms too.
         q = CompanyQuery(company="棒谷科技")
         queries = review_queries(q)
-        joined = " ".join(queries)
-        assert "棒谷" in joined
+        texts = [t for t, _ in queries]
+        assert '"棒谷"' in texts
 
     def test_queries_still_use_original(self):
         q = CompanyQuery(company="棒谷科技")
         queries = review_queries(q)
-        joined = " ".join(queries)
-        assert "棒谷科技" in joined
+        texts = [t for t, _ in queries]
+        assert '"棒谷科技"' in texts
 
 
 class TestReviewPass2Queries:
-    """v0.1.18 — Pass-2 broad-recall queries (no allowlist)."""
+    """v0.1.19 — review_pass2_queries is a deprecated stub."""
 
-    def test_emits_broad_recall_queries(self):
+    def test_legacy_returns_empty(self):
+        from jobhunter.search.query_templates import review_pass2_queries
         q = CompanyQuery(company="棒谷科技")
-        queries = review_pass2_queries(q)
-        joined = " ".join(queries)
-        # The three recall terms that surface UGC not in the allowlist.
-        assert "知乎" in joined
-        assert "小红书" in joined
-        assert "体验" in joined
+        assert review_pass2_queries(q) == []
 
-    def test_capped_at_max_n(self):
-        q = CompanyQuery(company="棒谷科技", aliases=["Banggood"])
-        queries = review_pass2_queries(q, max_n=2)
-        assert len(queries) <= 2
-
-    def test_uses_first_two_names(self):
-        q = CompanyQuery(company="某科技", aliases=["SomeTech", "ST"])
-        queries = review_pass2_queries(q)
+    def test_no_broad_recall_keywords_anymore(self):
+        # v0.1.19 — pure name-only; pass-2's old keywords removed.
+        from jobhunter.search.query_templates import review_pass2_queries
+        queries = review_pass2_queries(CompanyQuery(company="棒谷科技"))
         joined = " ".join(queries)
-        assert "某科技" in joined  # primary name
-        # 3 templates × 1 name = 3 queries (since we cap at max_n=2 but emit
-        # templates until we hit the cap; with primary only, we get 3).
-
-    def test_no_slang_in_pass2(self):
-        # Pass-2 is for name-based broad recall, not slang.
-        q = CompanyQuery(company="棒谷科技", slang_queries=["内卷", "996"])
-        queries = review_pass2_queries(q)
-        joined = " ".join(queries)
-        assert "内卷" not in joined
-        assert "996" not in joined
+        assert "知乎" not in joined
+        assert "小红书" not in joined
+        assert "体验" not in joined
 
 
 # =============== A: two-pass collector ===============
@@ -193,75 +178,112 @@ def _item(url: str, title: str = "T") -> RawItem:
 
 
 @pytest.mark.asyncio
-class TestTwoPassReviews:
-    """v0.1.18 — Pass-2 fires when pass-1 returns <3 hits."""
+class TestV0119PerDomainQueries:
+    """v0.1.19 — review_queries() returns (text, allowlist) pairs."""
 
-    async def test_pass1_sufficient_skips_pass2(self):
-        # Pass-1 returns 5+ hits → pass-2 must NOT run (cost control).
-        pass1_q = review_queries(_q())[0]
-        tavily = _StubTavily({
-            pass1_q: [_item(f"https://x.com/{i}") for i in range(5)],
-        })
-        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
-        result = await coll.collect(_q())
+    def test_returns_tuples_of_text_and_single_domain_allowlist(self):
+        from jobhunter.models.query import CompanyQuery
+        from jobhunter.search.query_templates import review_queries
+        pairs = review_queries(CompanyQuery(company="棒谷科技"))
+        # 30 pairs = 15 domains * 2 names (primary + heuristic-stripped)
+        assert len(pairs) == 30
+        for text, allowlist in pairs:
+            assert isinstance(text, str)
+            assert isinstance(allowlist, list)
+            assert len(allowlist) == 1
+            # Quote-wrapped name only
+            assert text in ('"棒谷科技"', '"棒谷"')
 
-        assert len(result.items) == 5  # 5 from pass1
-        # All calls should be pass-1 (with allowlist)
-        assert all(c[1] is not None for c in tavily.calls)
+    def test_no_keywords_in_text(self):
+        from jobhunter.models.query import CompanyQuery
+        from jobhunter.search.query_templates import review_queries
+        pairs = review_queries(CompanyQuery(company="X"))
+        texts = [t for t, _ in pairs]
+        joined = " ".join(texts)
+        # v0.1.19 strips all keyword suffixes
+        for kw in ["加班", "离职率", "知乎", "体验", "脉脉", "看准", "避雷"]:
+            assert kw not in joined
 
-    async def test_pass1_thin_triggers_pass2(self):
-        # Pass-1 returns <3 hits → pass-2 must run.
-        pass1_q = review_queries(_q())[0]
-        # Use a pass-2-only query (small红书) to disambiguate from pass-1's
-        # "知乎" / "体验" which overlap.
-        pass2_q = review_pass2_queries(_q())[1]  # "棒谷科技" 小红书
-        tavily = _StubTavily({
-            pass1_q: [_item("https://x.com/only-one")],
-            pass2_q: [_item("https://other-site.com/post1"),
-                      _item("https://another.com/post2")],
-        })
-        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
-        result = await coll.collect(_q())
+    def test_each_domain_appears_in_some_allowlist(self):
+        from jobhunter.models.query import CompanyQuery
+        from jobhunter.search.query_templates import (
+            MAX_DOMAINS_PER_RUN,
+            review_queries,
+        )
+        pairs = review_queries(CompanyQuery(company="X"))
+        seen_domains = set()
+        for _, allowlist in pairs:
+            seen_domains.update(allowlist)
+        # Should see at most MAX_DOMAINS_PER_RUN distinct domains.
+        assert len(seen_domains) <= MAX_DOMAINS_PER_RUN
 
-        assert len(result.items) == 3  # 1 from pass1 + 2 from pass2
-        # Pass-2 calls should have include_domains=None
-        pass2_calls = [c for c in tavily.calls if c[0] == pass2_q]
-        assert len(pass2_calls) == 1
-        assert pass2_calls[0][1] is None
+    def test_legacy_review_pass2_returns_empty(self):
+        """v0.1.19 — review_pass2_queries is deprecated stub."""
+        from jobhunter.models.query import CompanyQuery
+        from jobhunter.search.query_templates import review_pass2_queries
+        assert review_pass2_queries(CompanyQuery(company="X")) == []
 
-    async def test_pass2_results_dedup_with_pass1(self):
-        # Same URL appears in both passes — should appear once.
-        pass1_q = review_queries(_q())[0]
-        pass2_q = review_pass2_queries(_q())[0]
-        shared_url = "https://x.com/shared"
-        tavily = _StubTavily({
-            pass1_q: [_item(shared_url, "from pass1")],
-            pass2_q: [_item(shared_url, "from pass2")],
-        })
-        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
-        result = await coll.collect(_q())
 
-        urls = [i.url for i in result.items]
-        assert len(urls) == len(set(urls))  # dedup
-        # First-wins keeps the pass1 instance
-        assert result.items[0].title == "from pass1"
+class TestV0119CollectorOnePass:
+    """v0.1.19 — tavily_reviews collector is single-pass now (no pass-2)."""
 
-    async def test_both_passes_empty_returns_error(self):
-        # Pass-1 empty + pass-2 empty → CollectorResult with error, no crash.
-        tavily = _StubTavily({})
-        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
-        result = await coll.collect(_q())
+    async def test_iterates_pairs_with_per_domain_allowlist(self):
+        from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector
+        from jobhunter.config import Settings
+        from jobhunter.models.query import CompanyQuery
+        from jobhunter.models.raw import RawItem
+
+        calls: list[tuple[str, list[str] | None]] = []
+
+        class _Stub:
+            async def search(self, q, *, include_domains=None, **_):
+                calls.append((q, include_domains))
+                return [RawItem(title="t", url=f"https://x.com/{len(calls)}", content="", source="test")]
+
+        coll = TavilyReviewsCollector(Settings(), tavily=_Stub())
+        result = await coll.collect(CompanyQuery(company="棒谷科技"))
+
+        # Every call gets exactly one domain in allowlist
+        for _q, allowlist in calls:
+            assert allowlist is not None
+            assert len(allowlist) == 1
+        # Got results back
+        assert len(result.items) > 0
+
+    async def test_no_pass2_fires_regardless_of_pass1_size(self):
+        """v0.1.19 — single-pass design. Even if pass-1 returns 0, we don't
+        run a separate 'broad' pass."""
+        from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector
+        from jobhunter.config import Settings
+        from jobhunter.models.query import CompanyQuery
+
+        call_count = 0
+
+        class _Stub:
+            async def search(self, q, *, include_domains=None, **_):
+                nonlocal call_count
+                call_count += 1
+                return []  # always empty
+
+        coll = TavilyReviewsCollector(Settings(), tavily=_Stub())
+        result = await coll.collect(CompanyQuery(company="棒谷科技"))
+
+        # All review_queries() calls run, no extra pass-2
+        assert call_count == 30
         assert result.items == []
         assert result.error == "no_results"
 
-    async def test_pass1_exception_falls_through_to_pass2(self):
-        # If pass-1 throws, pass-2 still runs (best-effort recall).
-        class ExplodingTavily:
-            def __init__(self):
-                self.search = AsyncMock(side_effect=RuntimeError("network blip"))
-        coll = TavilyReviewsCollector(Settings(), tavily=ExplodingTavily())
-        # Pass-1 swallows the exception (logs warning), pass-2 also swallows.
-        # Result: error captured but pipeline doesn't crash.
-        result = await coll.collect(_q())
-        assert result.items == []
-        assert "network blip" in result.error
+    async def test_dedupes_across_calls(self):
+        from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector
+        from jobhunter.config import Settings
+        from jobhunter.models.query import CompanyQuery
+        from jobhunter.models.raw import RawItem
+
+        class _Stub:
+            async def search(self, q, *, include_domains=None, **_):
+                return [RawItem(title="t", url="https://shared.com/p/1", content="", source="test")]
+
+        coll = TavilyReviewsCollector(Settings(), tavily=_Stub())
+        result = await coll.collect(CompanyQuery(company="棒谷科技"))
+        # Same URL from multiple queries → deduped to 1
+        assert len(result.items) == 1

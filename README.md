@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 347 tests
+pytest                        # 348 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.18）
+## 已知限制（v0.1.19）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -101,6 +101,7 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.16 报告「信号新鲜度 + JD 对照 + 顶层判断」三件套**：(1) 每条 review signal 加 `published_at`（LLM 抽不到 → null；`_loose_keyword_reviews` 用今日），模板渲染「X 月前」badge，超过 1 年的信号自动淡化（line-through + 0.5 opacity）；(2) `--jd TEXT` / `--jd-file PATH` CLI 触发，`compute_jd_alignment()` 纯本地判定 6 类常见承诺（弹性 / 15 薪 / 五险一金 / 扁平 / 期权 / 福利）vs 公开事实 — confirmed (绿) / contradicted (红) / unverified (灰)，零 LLM 调用；`(3) `compute_overall_verdict()` 派生顶层 verdict（recommend / caution / avoid / neutral）渲染在 hero side（绿/黄/红/灰 badge + headline + top 3 reasons）。判定规则（deterministic）：avoid = 2+ 轴 ≤2 OR 司法 >10 + 异常；caution = 任一轴 ≤3 OR 司法 >3 OR 重度加班 ≥2 OR 异常；recommend = 全轴 ≥4 AND 司法 0 AND 无重度加班 AND 正面 ≥ 负面
 - **v0.1.17 报告「薪酬 band + JD 细粒度 + 历史快照 + watchlist + 打印/PDF」五件套**：(1) `compute_salary_band()` 派生 P25 / P50 / P75（线性插值），模板 `.salary-band` 渲染横条 + 中位标；(2) `jd_alignment` 新增 7 条细粒度（远程 / 双休 / 出差 / 团建 / 培训 / 晋升 / 弹性时间），总 15 类承诺可核对；(3) `report/snapshot.py` 把每次 run 的关键指标（verdict / 司法数 / 薪酬 P50 / 异常 / 氛围）写入 platformdirs cache，下次同公司 run 自动渲染「vs 上次 (X 天前)」差异行，verdict 升降用 ↑ / ↓ 标注；(4) `watchlist` 子命令（`add` / `list` / `remove`）持久化到 cache 目录 JSON；CLI 主流程跑完后自动 mark_ran；(5) `--print` CLI flag 触发 `?print=1` URL，inline JS 调 `window.print()` 让用户在浏览器原生对话框「Save as PDF」；CSS `@media print` 关闭动画 / 隐藏拖拽把手 / 强制单色背景
 - **v0.1.18 reviews 域召回修复**（棒谷科技报告薪酬/加班/氛围三章全空，user 在小红书能搜到但 pipeline 搜不到 — 根因：Tavily 对小红书/知乎内文覆盖差被 allowlist 拒掉 + LLM 别名失败时只用全名搜）：(A) reviews 采集器跑 **2 轮**：pass-1 6 query 带 allowlist（cost-bounded），仅当 pass-1 < 3 命中时触发 pass-2，3 个高召回 query（`知乎` / `小红书` / `体验 评价`）**不带** allowlist（成本 ~3x/单 query）；`_dedup_by_url()` 按 URL 去重；(B) `_all_names()` 在 `q.aliases` 为空时启用本地启发式（中文 corporate 后缀 strip：棒谷科技 → 棒谷；CamelCase split：AlibabaGroup → Alibaba），LLM 别名失败时仍能多 query 1-2 个真实称呼。零 LLM 调用增量
+- **v0.1.19 reviews 全量 name-only 召回 + LLM 抽取**：抛弃 v0.1.18 的 keyword-based query（`"X" 加班` / `"X" 离职率` / `"X" 知乎` …），改成 **per-domain name-only**：每个域一条 query，文本只是 `"X"`，不挂任何关键词，让 Tavily 返回该域里所有提到公司的内容，由 LLM 抽取步做语义分类（找 salary / overtime / vibe / turnover 信号，不依赖关键词命中）。`review_queries()` 现在返回 `list[(text, allowlist)]`，`MAX_DOMAINS_PER_RUN=15`，每公司 ≤30 query（15 域 × 2名字，含 v0.1.18 别名兜底）。slang 召回删除（LLM 抽取已经能识别 "内卷 / ICU / 摆烂"）。成本与 v0.1.18 相当，但**每 query 更聚焦**（单域 allowlist），LLM 抽取的 signal-to-noise 更好
 - 不支持：批量多公司（watch 已有 CRUD，批跑未做）、Web 服务、Playwright
 
 ## 下次接手可考虑的深度改动

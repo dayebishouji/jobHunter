@@ -57,72 +57,82 @@ class TestAllNames:
 
 
 class TestReviewQueriesExpansion:
-    def test_no_aliases(self):
-        q = review_queries(_q("阿里巴巴集团"))
-        # v0.1.18 — heuristic adds "阿里巴巴" → 6 × 2 = 12 queries.
-        assert len(q) == 12
-        # Original name still appears (in the first-name queries).
-        assert any('"阿里巴巴集团"' in s for s in q)
-        # Stripped form is also queried.
-        assert any('"阿里巴巴"' in s for s in q)
+    """v0.1.19 - Pure name-only, per-domain (text, allowlist) pairs."""
 
-    def test_with_aliases_doubles_queries(self):
-        q = review_queries(_q("阿里巴巴集团", aliases=["阿里"]))
-        # 6 base × 2 names = 12
-        assert len(q) == 12
-        assert any('"阿里"' in s for s in q)
-        assert any('"阿里巴巴集团"' in s for s in q)
+    def test_no_aliases_yields_per_domain_name_only_pairs(self):
+        pairs = review_queries(_q("阿里巴巴集团"))
+        # 15 domains * 2 names (heuristic adds second name) = 30 pairs.
+        assert len(pairs) == 30
+        # All queries are just the name in quotes, no keywords.
+        texts = [t for t, _ in pairs]
+        assert all(t in ('"阿里巴巴集团"', '"阿里巴巴"') for t in texts)
 
-    def test_with_aliases_and_position(self):
-        q = review_queries(_q("阿里巴巴集团", position="后端", aliases=["阿里"]))
-        # 6 base × 2 + 2 position × 2 = 16
-        assert len(q) == 16
+    def test_with_aliases_uses_both_names(self):
+        pairs = review_queries(_q("阿里巴巴集团", aliases=["阿里"]))
+        texts = [t for t, _ in pairs]
+        assert len(pairs) == 30
+        assert '"阿里巴巴集团"' in texts
+        assert '"阿里"' in texts
 
-    def test_aliases_capped_at_4_total(self):
-        q = review_queries(_q("X", aliases=["a", "b", "c", "d", "e", "f"]))
-        # 6 base × 4 names = 24
-        assert len(q) == 24
+    def test_aliases_capped_at_2(self):
+        pairs = review_queries(_q("X", aliases=["a", "b", "c", "d", "e", "f"]))
+        texts = set(t for t, _ in pairs)
+        assert texts == {'"X"', '"a"'}
 
-    def test_position_escape_with_city(self):
-        q = review_queries(_q("X", position="P", city="杭州"))
-        assert any("杭州 避雷" in s for s in q)
+    def test_each_allowlist_is_single_domain(self):
+        pairs = review_queries(_q("X"))
+        for _text, allowlist in pairs:
+            assert len(allowlist) == 1
+
+    def test_no_keyword_suffix(self):
+        pairs = review_queries(_q("棒谷科技"))
+        texts = [t for t, _ in pairs]
+        joined = " ".join(texts)
+        assert "加班" not in joined
+        assert "离职率" not in joined
+        assert "知乎" not in joined
+        assert "体验" not in joined
+
+    def test_slang_ignored(self):
+        pairs = review_queries(_q("X", slang_queries=["内卷", "ICU"]))
+        texts = [t for t, _ in pairs]
+        joined = " ".join(texts)
+        assert "内卷" not in joined
+        assert "ICU" not in joined
+
+    def test_position_text_ignored(self):
+        pairs = review_queries(_q("X", position="P", city="杭州"))
+        texts = [t for t, _ in pairs]
+        joined = " ".join(texts)
+        assert "P" not in joined
+        assert "杭州" not in joined
+        assert "避雷" not in joined
 
 
 class TestReviewSlangExpansion:
-    """Slang queries (LLM-generated colloquial recall terms) get appended
-    as plain query strings and as company-anchored variants."""
+    """v0.1.19 - Slang recall was removed. LLM extraction handles
+    colloquial terms from raw content directly. Tests verify slang has
+    NO effect on the query list."""
 
-    def test_no_slang_means_no_extras(self):
-        q = review_queries(_q("阿里巴巴集团"))
-        # v0.1.18 — heuristic adds "阿里巴巴" as a second name → 6 base × 2 = 12.
-        assert len(q) == 12
+    def test_slang_has_no_effect(self):
+        pairs_a = review_queries(_q("阿里巴巴集团", slang_queries=[]))
+        pairs_b = review_queries(_q("阿里巴巴集团", slang_queries=["内卷", "ICU", "摆烂"]))
+        assert pairs_a == pairs_b
 
-    def test_with_slang_appends_company_anchored_and_bare(self):
-        slang = ["内卷", "ICU", "摆烂"]
-        q = review_queries(_q("阿里巴巴集团", slang_queries=slang))
-        # v0.1.18 — heuristic adds "阿里巴巴" → 6 × 2 base + 3 × 2 slang = 18.
-        assert len(q) == 18
-        assert any("阿里巴巴集团 内卷" in s for s in q)
-        assert any("阿里巴巴集团 ICU" in s for s in q)
-        assert any(s == "摆烂" for s in q)
-
-    def test_slang_capped_at_8(self):
+    def test_slang_capped_at_8_no_op(self):
         slang = [f"词{i}" for i in range(20)]
-        q = review_queries(_q("X", slang_queries=slang))
-        # 6 base + 8 × 2 = 22
-        assert len(q) == 22
+        pairs = review_queries(_q("X", slang_queries=slang))
+        texts = set(t for t, _ in pairs)
+        assert texts == {'"X"', '"X"'}
 
-    def test_slang_dedup(self):
-        slang = ["内卷", "内卷", "ICU"]
-        q = review_queries(_q("X", slang_queries=slang))
-        # 6 + (2 unique) × 2 = 10
-        assert len(q) == 10
+    def test_slang_dedup_no_op(self):
+        pairs_a = review_queries(_q("X", slang_queries=["内卷", "ICU"]))
+        pairs_b = review_queries(_q("X", slang_queries=["内卷", "内卷", "ICU"]))
+        assert pairs_a == pairs_b
 
     def test_empty_slang_ignored(self):
-        slang = ["", "  ", "内卷"]
-        q = review_queries(_q("X", slang_queries=slang))
-        # 6 + 1 × 2 = 8
-        assert len(q) == 8
+        pairs = review_queries(_q("X", slang_queries=["", "  ", "内卷"]))
+        assert all("内卷" not in t for t, _ in pairs)
 
 
 class TestOtherDomainsNoAliases:

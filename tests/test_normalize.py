@@ -116,10 +116,15 @@ class TestCrosscheck:
 
 class TestQueryTemplates:
     def test_review_queries_basics(self):
+        # v0.1.19 — returns list of (text, allowlist) tuples. Pure name-only.
         q = review_queries(CompanyQuery(company="阿里", position="后端"))
-        assert any("阿里" in s for s in q)
-        assert any("后端" in s for s in q)
-        assert any("加班" in s for s in q)
+        texts = [t for t, _ in q]
+        # Per-domain allowlist has the company in it
+        assert any("阿里" in t for t in texts)
+        # NO keyword suffixes anymore (v0.1.19 removed them)
+        joined = " ".join(texts)
+        assert "加班" not in joined
+        assert "后端" not in joined  # position no longer used to construct text
 
     def test_news_queries_have_year(self):
         qs = news_queries(CompanyQuery(company="X"))
