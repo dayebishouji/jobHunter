@@ -84,3 +84,10 @@ class ReportData(BaseModel):
     # v0.1.15 — 1mo / 3mo / 6mo 试用期观察清单 + 同行业对比
     trial_checklist: dict[str, list[str]] = Field(default_factory=dict)
     peer_comparison: list[dict] = Field(default_factory=list)  # PeerCompany.model_dump() list
+
+    # v0.1.16 — JD claim alignment + top-level verdict.
+    # Both are populated by builder.compute_*(); can be pre-populated to override.
+    # Stored as dict (not dataclass) so ReportData stays pydantic-pure and
+    # .model_dump() round-trips cleanly.
+    jd_alignment: list[dict] = Field(default_factory=list)  # JdClaim.__dict__ list
+    overall_verdict: dict | None = None  # OverallVerdict.__dict__

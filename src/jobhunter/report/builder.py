@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 import jinja2
 
 from jobhunter.models.report import ReportData, SourceEntry
+from jobhunter.report.jd_alignment import JdClaim, compute_jd_alignment
 from jobhunter.report.charts import (
     case_timeline_svg,
     case_year_buckets,
@@ -459,6 +462,132 @@ def compute_chapter_stories(data: ReportData) -> tuple[dict[str, str], dict[str,
     return edit_notes, stories, industry_key
 
 
+# ---------- v0.1.16 — Top-level verdict (recommend / caution / avoid / neutral) ----------
+
+Verdict = Literal["recommend", "caution", "avoid", "neutral"]
+
+
+@dataclass
+class OverallVerdict:
+    level: Verdict
+    headline: str          # one-line headline
+    reasons: list[str]     # top 3 evidence lines
+    score: float | None = None  # avg axis score if available
+
+
+def compute_overall_verdict(data: ReportData) -> OverallVerdict:
+    """v0.1.16 — Derive a single top-level recommendation from all gathered facts.
+
+    Logic (deterministic, no LLM):
+      avoid     ← any axis ≤ 2 OR case_count_total > 10 OR (anomaly_listed AND funding ≠ 已上市)
+      caution   ← any axis ≤ 3 OR case_count > 3 OR heavy_overtime ≥ 2 OR anomaly_listed
+      recommend ← all axes ≥ 4 AND case_count == 0 AND no high-intensity overtime AND positive vibe ≥ negative
+      neutral   ← everything else (data too thin to lean either way)
+    """
+    axes = {a.axis.value: a.stars for a in (data.axes or []) if a.stars is not None}
+    rf = data.review_facts
+    jf = data.judicial_facts
+    bf = data.business_facts
+    cp = data.company_profile
+    score = _axes_avg(data.axes or []) if data.axes else None
+
+    reasons: list[str] = []
+
+    # Heavy overtime count
+    heavy_overtime = 0
+    if rf:
+        heavy_overtime = sum(1 for o in rf.overtime_signals if o.intensity == "high")
+    case_count = jf.case_count_total if jf else None
+    anomaly = bool(bf.anomaly_listed) if bf else False
+    listed = (cp.funding_stage == "已上市") if cp else False
+    case_count_val = case_count if isinstance(case_count, int) else 0
+
+    # AVOID triggers — only hard, multi-axis stress.
+    # Single anomaly / single weak axis = caution, not avoid. Avoid requires
+    # the reader to question whether to even continue the interview loop.
+    avoid_triggers: list[str] = []
+    weak_axes = [(k, v) for k, v in axes.items() if v <= 2]
+    if len(weak_axes) >= 2:
+        names = "、".join(_axis_label_zh(k) for k, _ in weak_axes)
+        avoid_triggers.append(f"{names} 等 {len(weak_axes)} 个轴严重偏低")
+    if case_count_val > 10 and anomaly:
+        avoid_triggers.append(f"司法记录 {case_count_val} 起 + 经营异常，叠加风险高")
+    elif case_count_val > 10:
+        avoid_triggers.append(f"司法记录 {case_count_val} 起，超出行业典型水平")
+
+    if avoid_triggers:
+        return OverallVerdict(
+            level="avoid",
+            headline="建议避开 — 多项硬指标触底",
+            reasons=avoid_triggers[:3],
+            score=score,
+        )
+
+    # CAUTION triggers
+    caution_triggers: list[str] = []
+    for k, v in axes.items():
+        if v <= 3:
+            caution_triggers.append(f"{_axis_label_zh(k)} 轴 {v:.0f}/5 偏弱")
+    if case_count_val > 3:
+        caution_triggers.append(f"司法记录 {case_count_val} 起，需关注")
+    if heavy_overtime >= 2:
+        caution_triggers.append(f"评价中已有 {heavy_overtime} 条高强度加班信号")
+    if anomaly:
+        caution_triggers.append("曾被列入经营异常名录")
+
+    if caution_triggers:
+        return OverallVerdict(
+            level="caution",
+            headline="建议谨慎 — 存在需要核实的问题",
+            reasons=caution_triggers[:3],
+            score=score,
+        )
+
+    # RECOMMEND triggers — only when signals are clearly clean AND positive
+    if axes and all(v >= 4 for v in axes.values()):
+        pos_vibe = sum(1 for v in rf.vibe_signals if v.sentiment == "positive") if rf else 0
+        neg_vibe = sum(1 for v in rf.vibe_signals if v.sentiment == "negative") if rf else 0
+        if case_count_val == 0 and heavy_overtime == 0 and pos_vibe >= neg_vibe:
+            return OverallVerdict(
+                level="recommend",
+                headline="建议接 offer — 现有数据面较干净",
+                reasons=[
+                    "五轴评分均在 4 分及以上",
+                    "无司法 / 经营异常记录",
+                    f"正面氛围信号 ({pos_vibe}) 不少于负面 ({neg_vibe})",
+                ],
+                score=score,
+            )
+
+    # NEUTRAL — data too thin or mixed
+    mixed = []
+    if not axes:
+        mixed.append("五轴评分缺失，建议补充数据后再判断")
+    elif any(3 < v < 4 for v in axes.values()):
+        mixed.append("部分指标落在 3-4 分灰色区间")
+    if not rf or not (rf.salary_signals or rf.overtime_signals or rf.vibe_signals):
+        mixed.append("评价数据较少，结论仅供参考")
+    return OverallVerdict(
+        level="neutral",
+        headline="信息有限 — 建议补充核实",
+        reasons=mixed[:3] or ["数据面不完整"],
+        score=score,
+    )
+
+
+def _axis_label_zh(key: str) -> str:
+    return _AXIS_LABEL_ZH.get(key, key)
+
+
+_AXIS_LABEL_ZH: dict[str, str] = {
+    "overtime": "加班强度",
+    "salary_trust": "薪酬诚信",
+    "judicial": "司法风险",
+    "business": "工商风险",
+    "culture": "文化氛围",
+}
+
+
 def build_report(data: ReportData) -> str:
     css = (_STATIC_DIR / "report.css").read_text(encoding="utf-8")
     sources = _collect_sources(data)
@@ -509,6 +638,12 @@ def build_report(data: ReportData) -> str:
     # v0.1.15 — 试用期观察清单 (1mo / 3mo / 6mo)
     trial_checklist = data.trial_checklist or compute_trial_checklist(data)
 
+    # v0.1.16 — JD 对照清单 (pure local, deterministic)
+    jd_alignment: list[JdClaim] = data.jd_alignment or compute_jd_alignment(data)
+
+    # v0.1.16 — 顶层 verdict
+    overall_verdict = data.overall_verdict or compute_overall_verdict(data)
+
     tmpl = _ENV.get_template("report.html.j2")
     return tmpl.render(
         data=data,
@@ -537,5 +672,7 @@ def build_report(data: ReportData) -> str:
         industry_key=industry_key,
         trial_checklist=trial_checklist,
         peer_comparison=data.peer_comparison,
+        jd_alignment=jd_alignment,
+        overall_verdict=overall_verdict,
         favicon_url=_favicon_url,
     )

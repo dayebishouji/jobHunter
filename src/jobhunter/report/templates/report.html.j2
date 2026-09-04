@@ -42,6 +42,25 @@
   </aside>
   {% endif %}
 {%- endmacro %}
+
+{# === Macro: v0.1.16 — per-signal age badge (「X 月前」/「X 年前」)
+   Falls back silently when the signal has no `published_at`. === #}
+{% macro signal_age_badge(s) -%}
+  {% if s and s.published_at %}
+    {% set today = data.generated_at.date() if data.generated_at and data.generated_at.date is defined else data.now_date %}
+    {% set age_days = (today - s.published_at).days %}
+    {% if age_days < 0 %}{% set age_days = 0 %}{% endif %}
+    {% if age_days < 31 %}
+      <span class="signal-age signal-age-fresh" title="信号发布时间 {{ s.published_at.isoformat() }}">{{ age_days }} 天前</span>
+    {% elif age_days < 365 %}
+      {% set months = (age_days / 30) | round(0, 'floor') | int %}
+      <span class="signal-age signal-age-mid" title="信号发布时间 {{ s.published_at.isoformat() }}">{{ months }} 个月前</span>
+    {% else %}
+      {% set years = (age_days / 365) | round(1) %}
+      <span class="signal-age signal-age-stale" title="信号发布时间 {{ s.published_at.isoformat() }}">{{ years }} 年前</span>
+    {% endif %}
+  {% endif %}
+{%- endmacro %}
 <link rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;700&display=swap" />
 <style>{{ css | safe }}</style>
@@ -121,6 +140,25 @@
       </div>
     {% endif %}
 
+    {# v0.1.16 — top-level verdict (recommend / caution / avoid / neutral) #}
+    {% if overall_verdict %}
+      {% set v = overall_verdict %}
+      <div class="hero-verdict hero-verdict-{{ v.level }}" aria-label="综合判断">
+        <div class="hero-verdict-level">
+          {% if v.level == 'recommend' %}建议接 offer
+          {% elif v.level == 'caution' %}建议谨慎
+          {% elif v.level == 'avoid' %}建议避开
+          {% else %}信息有限{% endif %}
+        </div>
+        <div class="hero-verdict-headline">{{ v.headline }}</div>
+        {% if v.reasons %}
+          <ul class="hero-verdict-reasons">
+            {% for r in v.reasons %}<li>{{ r }}</li>{% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    {% endif %}
+
     {% if data.axes %}
     <div class="hero-radar">
       <div class="hero-ring-label">风险断面</div>
@@ -144,6 +182,34 @@
     </div>
   </div>
   {% endfor %}
+</section>
+{% endif %}
+
+{# ====================== JD 对照清单 (v0.1.16) ====================== #}
+{% if jd_alignment %}
+<section class="jd-alignment" aria-label="JD 对照清单">
+  <div class="jd-alignment-head">
+    <div class="jd-alignment-title">JD 对照清单</div>
+    <div class="jd-alignment-dek">
+      你提供的 JD 提到的招聘承诺 vs 公开评价中能核对的事实
+    </div>
+  </div>
+  <ul class="jd-claim-list">
+    {% for c in jd_alignment %}
+      <li class="jd-claim jd-claim-{{ c.status }}">
+        <span class="jd-claim-icon">
+          {%- if c.status == 'confirmed' -%}✓
+          {%- elif c.status == 'contradicted' -%}✗
+          {%- else -%}?
+          {%- endif -%}
+        </span>
+        <div class="jd-claim-body">
+          <div class="jd-claim-text"><strong>{{ c.claim }}</strong>{% if c.matched_text %} <span class="muted">「{{ c.matched_text }}」</span>{% endif %}</div>
+          <div class="jd-claim-reason muted">{{ c.reasoning }}</div>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
 </section>
 {% endif %}
 
@@ -422,7 +488,7 @@
     <tbody>
       {% for s in r.salary_signals %}
       <tr>
-        <td><strong>{{ s.position or '—' }}</strong></td>
+        <td><strong>{{ s.position or '—' }}</strong> {{ signal_age_badge(s) }}</td>
         <td class="mono">
           {%- if s.salary_range_min_k is not none and s.salary_range_max_k is not none -%}
             {{ '%.0f–%.0f'|format(s.salary_range_min_k, s.salary_range_max_k) }}
@@ -499,6 +565,7 @@
     {% for o in r.overtime_signals %}
     <li>
       <span class="chip chip-{{ {'high':'bad','medium':'warn','low':'good'}[o.intensity] }}">{{ o.pattern }} · {{ {'high':'重','medium':'中','low':'轻'}[o.intensity] }}</span>
+      {{ signal_age_badge(o) }}
       {% set sup = signal_supports.get(o.url|string, {}) %}
       {% set tier = sup.get('support_tier', 'unverified') %}
       {% set tlabel = tier_label[tier][0] %}
@@ -559,6 +626,7 @@
         {% for v in r.vibe_signals %}
         <li>
           <span class="chip chip-{{ {'positive':'good','negative':'bad','mixed':'warn'}.get(v.sentiment, 'neutral') }}">{{ {'positive':'正面','negative':'负面','mixed':'混合','neutral':'中性'}[v.sentiment] }}</span>
+          {{ signal_age_badge(v) }}
           {% set sup = signal_supports.get(v.url|string, {}) %}
           {% set tier = sup.get('support_tier', 'unverified') %}
           {% set tlabel = tier_label[tier][0] %}

@@ -186,6 +186,8 @@ async def _interactive_flow() -> None:
 @click.option("--output", "-o", default=None, type=click.Path(path_type=Path), help="输出目录")
 @click.option("--no-open", is_flag=True, default=False, help="不自动打开浏览器")
 @click.option("--compare", default="", help="同行业对比公司（逗号分隔，如「美团,京东」）；每多 1 家 ≈ 多 1 次轻量级 pipeline")
+@click.option("--jd", "jd_text", default=None, help="JD 文本（可选）。提供后报告会自动与公司真实数据交叉验证")
+@click.option("--jd-file", "jd_file", default=None, type=click.Path(exists=True, path_type=Path), help="JD 文件路径（与 --jd 二选一）")
 def run_cmd(
     company: str,
     position: str,
@@ -195,6 +197,8 @@ def run_cmd(
     output: Path | None,
     no_open: bool,
     compare: str,
+    jd_text: str | None,
+    jd_file: Path | None,
 ) -> None:
     """非交互模式（脚本友好）。"""
     _setup_logging()
@@ -204,12 +208,19 @@ def run_cmd(
         err_console.print(f"[red]缺少 API key：[/red]{', '.join(missing)}")
         raise click.exceptions.Exit(code=2)
 
+    if jd_text and jd_file:
+        err_console.print("[red]--jd 与 --jd-file 二选一[/red]")
+        raise click.exceptions.Exit(code=2)
+    if jd_file:
+        jd_text = jd_file.read_text(encoding="utf-8").strip() or None
+
     q = CompanyQuery(
         company=company,
         position=position,
         city=city,
         include_judicial=not no_judicial,
         include_news=not no_news,
+        jd_text=jd_text,
     )
     peer_names = [n.strip() for n in compare.split(",") if n.strip()] if compare else []
     with Progress(

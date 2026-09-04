@@ -58,6 +58,50 @@ Sentiment = Literal["positive", "neutral", "negative", "mixed"]
 Role = Literal["被告", "原告", "第三人", "其他"]
 
 
+def _coerce_signal_date(v):
+    """v0.1.16 — shared date validator for review signal `published_at`.
+
+    LLM may return date / datetime / ISO string / '2024年5月' / '未知'.
+    Output: `date` instance on success; None otherwise.
+    """
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, date):
+        return v
+    if hasattr(v, "isoformat"):
+        try:
+            return v.date() if hasattr(v, "date") else v  # type: ignore[arg-type]
+        except Exception:  # noqa: BLE001
+            return None
+    if not isinstance(v, str):
+        return None
+    s = v.strip()
+    if not s or s in ("未知", "?", "无", "约"):
+        return None
+    import re
+    m = re.search(r"(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})", s)
+    if m:
+        y, mo, d = m.groups()
+        try:
+            return date(int(y), int(mo), int(d))
+        except ValueError:
+            return None
+    m2 = re.search(r"(\d{4})[-/.年](\d{1,2})", s)
+    if m2:
+        y, mo = m2.groups()
+        try:
+            return date(int(y), int(mo), 1)
+        except ValueError:
+            return None
+    # ISO fallback
+    try:
+        return date.fromisoformat(s[:10])
+    except ValueError:
+        return None
+
+
 # ---------- Business ----------
 
 class Shareholder(BaseModel):
@@ -179,8 +223,14 @@ class SalarySignal(NullTolerantListBase):
     bonus_months: float | None = None
     salary_total_months: int | None = None
     evidence: str = ""
+    published_at: date | None = None  # v0.1.16 — when this signal was posted (for decay display)
     url: HttpUrl | None = None
     supporting_urls: list[HttpUrl] = Field(default_factory=list)
+
+    @field_validator("published_at", mode="before")
+    @classmethod
+    def _coerce_signal_date(cls, v):
+        return _coerce_signal_date(v)
 
     @field_validator("base_monthly_k", "bonus_months", "salary_range_min_k", "salary_range_max_k", mode="before")
     @classmethod
@@ -227,8 +277,14 @@ class OvertimeSignal(NullTolerantListBase):
     pattern: Literal["996", "995", "大小周", "弹性", "不加班", "未知"] = "未知"
     intensity: Literal["low", "medium", "high"] = "medium"
     evidence: str = ""
+    published_at: date | None = None  # v0.1.16 — when this signal was posted
     url: HttpUrl | None = None
     supporting_urls: list[HttpUrl] = Field(default_factory=list)
+
+    @field_validator("published_at", mode="before")
+    @classmethod
+    def _coerce_signal_date(cls, v):
+        return _coerce_signal_date(v)
 
     @field_validator("pattern", mode="before")
     @classmethod
@@ -272,8 +328,14 @@ class OvertimeSignal(NullTolerantListBase):
 class TurnoverSignal(NullTolerantListBase):
     rate: Literal["low", "medium", "high", "unknown"] = "unknown"
     evidence: str = ""
+    published_at: date | None = None  # v0.1.16 — when this signal was posted
     url: HttpUrl | None = None
     supporting_urls: list[HttpUrl] = Field(default_factory=list)
+
+    @field_validator("published_at", mode="before")
+    @classmethod
+    def _coerce_signal_date(cls, v):
+        return _coerce_signal_date(v)
 
     @field_validator("rate", mode="before")
     @classmethod
@@ -295,8 +357,14 @@ class TurnoverSignal(NullTolerantListBase):
 class VibeSignal(NullTolerantListBase):
     sentiment: Sentiment = "neutral"
     evidence: str = ""
+    published_at: date | None = None  # v0.1.16 — when this signal was posted
     url: HttpUrl | None = None
     supporting_urls: list[HttpUrl] = Field(default_factory=list)
+
+    @field_validator("published_at", mode="before")
+    @classmethod
+    def _coerce_signal_date(cls, v):
+        return _coerce_signal_date(v)
 
     @field_validator("sentiment", mode="before")
     @classmethod

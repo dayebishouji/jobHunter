@@ -25,6 +25,11 @@ class CompanyQuery(BaseModel):
         default_factory=list,
         description="LLM 生成的口语化搜索词（用于 reviews 域召回增强,如 「ICU」「内卷」「摆烂」）",
     )
+    # v0.1.16 — optional JD text for claim-by-claim alignment against gathered facts.
+    jd_text: str | None = Field(
+        default=None,
+        description="JD 文本（可选）。提供后报告会自动提取常见招聘承诺并与公司真实数据交叉验证。",
+    )
 
     def display(self) -> str:
         parts = [self.company]

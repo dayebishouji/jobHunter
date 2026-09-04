@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import re
+from datetime import date
 
 from jobhunter.llm import (
     CONSOLIDATE_SYSTEM,
@@ -248,6 +249,17 @@ def _evidence_from(item: RawItem, pattern_label: str) -> str:
     return f"{snippet}（关键词：{pattern_label}）"
 
 
+def _item_published(it: RawItem) -> date:
+    """v0.1.16 — best-effort date for a RawItem (datetime → date; else today)."""
+    pa = getattr(it, "published_at", None)
+    if pa is not None:
+        try:
+            return pa.date() if hasattr(pa, "date") else date.fromisoformat(str(pa)[:10])
+        except (ValueError, TypeError):
+            pass
+    return date.today()
+
+
 def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
     """Local, deterministic synthesis from raw review snippets. Activates only
     when the LLM has already failed to surface signals in the same category.
@@ -274,6 +286,7 @@ def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
         if not text.strip():
             continue
         url = str(it.url) if it.url else None
+        sig_date = _item_published(it)
 
         # Overtime — synthesize only first hit per item
         if seen_overtime < 3:
@@ -283,6 +296,7 @@ def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
                         pattern="996" if "996" in text else ("大小周" if "大小周" in text else "未知"),
                         intensity=intensity,  # type: ignore[arg-type]
                         evidence=_evidence_from(it, "关键词命中"),
+                        published_at=sig_date,
                         url=url,  # type: ignore[arg-type]
                     ))
                     seen_overtime += 1
@@ -294,6 +308,7 @@ def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
                 vibe_hits.append(VibeSignal(
                     sentiment="negative",
                     evidence=_evidence_from(it, "负面关键词"),
+                    published_at=sig_date,
                     url=url,  # type: ignore[arg-type]
                 ))
                 seen_vibe += 1
@@ -301,6 +316,7 @@ def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
                 vibe_hits.append(VibeSignal(
                     sentiment="positive",
                     evidence=_evidence_from(it, "正面关键词"),
+                    published_at=sig_date,
                     url=url,  # type: ignore[arg-type]
                 ))
                 seen_vibe += 1
@@ -308,6 +324,7 @@ def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
                 vibe_hits.append(VibeSignal(
                     sentiment="mixed",
                     evidence=_evidence_from(it, "混合关键词"),
+                    published_at=sig_date,
                     url=url,  # type: ignore[arg-type]
                 ))
                 seen_vibe += 1
@@ -316,6 +333,7 @@ def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
         if seen_salary < 2 and _SALARY_KEYWORDS.search(text):
             salary_hits.append(SalarySignal(
                 evidence=_evidence_from(it, "薪酬关键词"),
+                published_at=sig_date,
                 url=url,  # type: ignore[arg-type]
             ))
             seen_salary += 1
@@ -323,8 +341,9 @@ def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
         # Turnover
         if seen_turnover < 2 and _TURNOVER_KEYWORDS.search(text):
             turnover_hits.append(TurnoverSignal(
-                intensity="high" if "高" in text or "频繁" in text else "unknown",
+                rate="high" if "高" in text or "频繁" in text else "unknown",
                 evidence=_evidence_from(it, "离职关键词"),
+                published_at=sig_date,
                 url=url,  # type: ignore[arg-type]
             ))
             seen_turnover += 1
