@@ -266,6 +266,12 @@ def domains_for_position(position: str) -> list[str]:
             extra.update(domains)
     if not extra:
         return list(REVIEW_DOMAINS)
+    # v0.1.22 hotfix — preserve "Always includes the 15 GENERAL_REVIEW_DOMAINS"
+    # claim from the docstring. Previously `review_queries()` then truncated the
+    # 20-item GENERAL list down to MAX_DOMAINS_PER_RUN=15, silently dropping
+    # 小红书 / 知乎 / 微博 / tieba / v2ex / zhipin — i.e. the most popular
+    # Chinese UGC platforms. Now we union sorted(GENERAL ∪ extras) so the
+    # ordering is stable and the caller's truncation only drops vertical extras.
     return sorted({*GENERAL_REVIEW_DOMAINS, *extra})
 
 NEWS_DOMAINS: list[str] = [
@@ -315,7 +321,8 @@ JUDICIAL_DOMAINS: list[str] = [
 
 
 def review_queries(q: CompanyQuery) -> list[tuple[str, list[str]]]:
-    """v0.1.19 — Pure name-only UGC recall.
+    """v0.1.19 — Pure name-only UGC recall (v0.1.22 hotfix: GENERAL_REVIEW_DOMAINS
+    bypass MAX_DOMAINS_PER_RUN truncation).
 
     Returns one query per (domain × name) pair. Each query is just the quoted
     company name — NO keywords like 加班 / 离职率. The LLM extraction step
@@ -329,21 +336,36 @@ def review_queries(q: CompanyQuery) -> list[tuple[str, list[str]]]:
     - Per-domain allowlist means Tavily returns only results from THAT forum,
       so each query is focused without filtering our recall.
 
-    Cost contract:
-    - Up to `MAX_DOMAINS_PER_RUN` (15) domains from position-aware allowlist
+    Cost contract (v0.1.22 hotfix):
+    - `GENERAL_REVIEW_DOMAINS` (the ~20 high-traffic UGC platforms — 小红书 /
+      知乎 / 脉脉 / 看准 / 牛客 / etc.) are ALWAYS queried, regardless of
+      `MAX_DOMAINS_PER_RUN`. Truncation only applies to vertical extras.
+      Previously `[:MAX_DOMAINS_PER_RUN]` silently dropped 5+ GENERAL domains
+      including 小红书 / 知乎 — i.e. the very platforms users expect to find
+      employee reviews on.
+    - Vertical extras are truncated to `MAX_DOMAINS_PER_RUN - len(general)`
+      to keep the total query count bounded.
     - Up to `_all_names(max_n=2)` names (primary + 1 alias; local heuristic
       expansion applied if LLM returned empty aliases)
-    - Total queries: ≤ 30 per company. About the same as v0.1.18 2-pass (24+3)
-      but per-query result is more focused → LLM extraction step has better
-      signal-to-noise on the raw content it processes.
+    - Total queries: ≈ 40-50 per company for 后端-style positions (was 30).
+      Still within Tavily budget.
 
     Returns list of (query_text, allowlist_for_this_query) tuples. Each tuple
     represents a single Tavily call.
     """
     names = _all_names(q, max_n=2)
-    domains = domains_for_position(q.position)[:MAX_DOMAINS_PER_RUN]
+    domains = domains_for_position(q.position)
+    # v0.1.22 hotfix — preserve the docstring contract: every GENERAL_REVIEW_DOMAIN
+    # gets queried regardless of `MAX_DOMAINS_PER_RUN`. Only vertical extras are
+    # truncated, and only when the total would exceed the cap.
+    general = set(GENERAL_REVIEW_DOMAINS)
+    core = [d for d in domains if d in general]
+    extras = [d for d in domains if d not in general]
+    budget_for_extras = max(0, MAX_DOMAINS_PER_RUN - len(core))
+    final_domains = core + extras[:budget_for_extras]
+
     pairs: list[tuple[str, list[str]]] = []
-    for d in domains:
+    for d in final_domains:
         for n in names:
             pairs.append((f'"{n}"', [d]))
     return pairs

@@ -185,8 +185,10 @@ class TestV0119PerDomainQueries:
         from jobhunter.models.query import CompanyQuery
         from jobhunter.search.query_templates import review_queries
         pairs = review_queries(CompanyQuery(company="棒谷科技"))
-        # 30 pairs = 15 domains * 2 names (primary + heuristic-stripped)
-        assert len(pairs) == 30
+        # v0.1.22 hotfix — 20 GENERAL_REVIEW_DOMAINS × 2 names (primary +
+        # heuristic-stripped) = 40 pairs. Empty position triggers the full
+        # REVIEW_DOMAINS union path but only GENERAL is preserved by the cap.
+        assert len(pairs) == 40
         for text, allowlist in pairs:
             assert isinstance(text, str)
             assert isinstance(allowlist, list)
@@ -207,6 +209,7 @@ class TestV0119PerDomainQueries:
     def test_each_domain_appears_in_some_allowlist(self):
         from jobhunter.models.query import CompanyQuery
         from jobhunter.search.query_templates import (
+            GENERAL_REVIEW_DOMAINS,
             MAX_DOMAINS_PER_RUN,
             review_queries,
         )
@@ -214,8 +217,11 @@ class TestV0119PerDomainQueries:
         seen_domains = set()
         for _, allowlist in pairs:
             seen_domains.update(allowlist)
-        # Should see at most MAX_DOMAINS_PER_RUN distinct domains.
-        assert len(seen_domains) <= MAX_DOMAINS_PER_RUN
+        # v0.1.22 hotfix — GENERAL_REVIEW_DOMAINS are NEVER truncated by the
+        # cap; only vertical extras are. So seen_domains may exceed
+        # MAX_DOMAINS_PER_RUN as long as it stays ≤ GENERAL ∪ (a subset of
+        # vertical extras).
+        assert len(seen_domains) >= len(GENERAL_REVIEW_DOMAINS)
 
     def test_legacy_review_pass2_returns_empty(self):
         """v0.1.19 — review_pass2_queries is deprecated stub."""
@@ -268,8 +274,10 @@ class TestV0119CollectorOnePass:
         coll = TavilyReviewsCollector(Settings(), tavily=_Stub())
         result = await coll.collect(CompanyQuery(company="棒谷科技"))
 
-        # All review_queries() calls run, no extra pass-2
-        assert call_count == 30
+        # All review_queries() calls run, no extra pass-2.
+        # v0.1.22 hotfix — 20 GENERAL_REVIEW_DOMAINS × 2 names = 40 calls
+        # (was 30 under the old 15-domain truncation contract).
+        assert call_count == 40
         assert result.items == []
         assert result.error == "no_results"
 

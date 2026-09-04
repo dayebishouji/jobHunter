@@ -61,8 +61,10 @@ class TestReviewQueriesExpansion:
 
     def test_no_aliases_yields_per_domain_name_only_pairs(self):
         pairs = review_queries(_q("阿里巴巴集团"))
-        # 15 domains * 2 names (heuristic adds second name) = 30 pairs.
-        assert len(pairs) == 30
+        # v0.1.22 hotfix — 20 GENERAL_REVIEW_DOMAINS × 2 names (heuristic
+        # adds second name) = 40 pairs. GENERAL bypasses MAX_DOMAINS_PER_RUN
+        # truncation; only vertical extras are capped.
+        assert len(pairs) == 40
         # All queries are just the name in quotes, no keywords.
         texts = [t for t, _ in pairs]
         assert all(t in ('"阿里巴巴集团"', '"阿里巴巴"') for t in texts)
@@ -70,7 +72,7 @@ class TestReviewQueriesExpansion:
     def test_with_aliases_uses_both_names(self):
         pairs = review_queries(_q("阿里巴巴集团", aliases=["阿里"]))
         texts = [t for t, _ in pairs]
-        assert len(pairs) == 30
+        assert len(pairs) == 40
         assert '"阿里巴巴集团"' in texts
         assert '"阿里"' in texts
 

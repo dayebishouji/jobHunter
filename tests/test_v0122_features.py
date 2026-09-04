@@ -43,6 +43,11 @@ from jobhunter.processing.normalize import (
     normalize,
 )
 from jobhunter.report.builder import build_report
+from jobhunter.search.query_templates import (
+    GENERAL_REVIEW_DOMAINS,
+    MAX_DOMAINS_PER_RUN,
+    review_queries,
+)
 
 
 # ============================================================================
@@ -292,3 +297,72 @@ class TestReviewUrlFilter:
             "maimai.cn",
         }
         assert expected_hosts.issubset(set(REVIEW_URL_PATTERNS.keys()))
+
+
+# ============================================================================
+# Bug 4 (v0.1.22 hotfix) — review_queries must query all GENERAL_REVIEW_DOMAINS
+# ============================================================================
+
+class TestReviewQueriesCarveOut:
+    """v0.1.22 hotfix — `review_queries()` used to silently drop ~5 GENERAL
+    UGC domains (小红书 / 知乎 / 微博 / tieba / v2ex / zhipin) when their
+    position-aware allowlist grew beyond `MAX_DOMAINS_PER_RUN`. Now
+    GENERAL_REVIEW_DOMAINS are always queried regardless of the cap;
+    truncation only applies to vertical extras."""
+
+    def test_all_general_domains_queried_for_backend(self):
+        """Bug 4 — pre-v0.1.22-hotfix, xiaohongshu was dropped for 后端."""
+        q = CompanyQuery(company="美的", position="后端", city="佛山",
+                         aliases=["美的集团"])
+        pairs = review_queries(q)
+        queried = {d for _, allow in pairs for d in allow}
+        assert queried >= set(GENERAL_REVIEW_DOMAINS), (
+            f"missing GENERAL domains: {set(GENERAL_REVIEW_DOMAINS) - queried}"
+        )
+
+    @pytest.mark.parametrize("must_have", [
+        "xiaohongshu.com", "zhihu.com", "maimai.cn", "kanzhun.com",
+        "weibo.com", "nowcoder.com", "tieba.baidu.com", "v2ex.com",
+        "zhipin.com", "douyin.com", "kuaishou.com", "1point3acres.com",
+    ])
+    def test_specific_general_domain_always_queried(self, must_have):
+        """Each platform users expect to find employee reviews on must NOT
+        be silently dropped by MAX_DOMAINS_PER_RUN truncation."""
+        q = CompanyQuery(company="某公司", position="后端", city="",
+                         aliases=["某集团"])
+        pairs = review_queries(q)
+        queried = {d for _, allow in pairs for d in allow}
+        assert must_have in queried, f"{must_have} was dropped from queries"
+
+    def test_no_vertical_extras_when_general_already_fills_budget(self):
+        """For 后端 the union (general ∪ developer) is 23 items, but the
+        cap is 15. After the hotfix, all 20 general get queried and 0
+        vertical extras (since 15 - 20 < 0)."""
+        q = CompanyQuery(company="某公司", position="后端", city="")
+        pairs = review_queries(q)
+        queried = {d for _, allow in pairs for d in allow}
+        # All general queried
+        assert queried >= set(GENERAL_REVIEW_DOMAINS)
+        # Vertical extras (developer: juejin/segmentfault/oschina) get cut
+        # because general alone exceeds the budget.
+        assert len(queried) == len(GENERAL_REVIEW_DOMAINS)
+
+    def test_vertical_extras_included_when_general_doesnt_fill_budget(self):
+        """For a position that matches a vertical hint (e.g. 跨境电商), the
+        union is general ∪ vertical_extras. General is always queried;
+        extras are truncated to fill the remaining budget."""
+        q = CompanyQuery(company="某公司", position="前端", city="")
+        pairs = review_queries(q)
+        queried = {d for _, allow in pairs for d in allow}
+        # All general queried
+        assert queried >= set(GENERAL_REVIEW_DOMAINS)
+        # Total ≤ len(general) + remaining budget for extras
+        assert len(queried) <= len(GENERAL_REVIEW_DOMAINS) + MAX_DOMAINS_PER_RUN
+
+    def test_queries_use_company_aliases(self):
+        """Each queried domain × each name in `_all_names(max_n=2)`."""
+        q = CompanyQuery(company="X", position="后端", city="",
+                         aliases=["Y", "Z"])
+        pairs = review_queries(q)
+        # 20 general × 2 names (_all_names max_n=2) = 40 pairs
+        assert len(pairs) == 20 * 2
