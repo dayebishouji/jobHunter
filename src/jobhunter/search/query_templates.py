@@ -422,10 +422,28 @@ def company_info_queries(q: CompanyQuery) -> list[str]:
 
 
 def _all_names(q: CompanyQuery, max_n: int = 4) -> list[str]:
-    """Return [company, *aliases] deduped and capped. Order preserved."""
+    """Return [company, *aliases] deduped and capped. Order preserved.
+
+    v0.1.18 — When the LLM alias step fails or returns empty (common for
+    lesser-known companies where round-1 produced no slang), fall back to
+    cheap local heuristic expansion:
+        棒谷科技 → 棒谷科技, 棒谷
+        Alibaba Group → Alibaba Group, Alibaba
+        字节跳动 → 字节跳动
+    UGC posts rarely use the full legal name — they say 棒谷 / Banggood /
+    Alibaba — so this single-line suffix strip materially improves recall
+    without an extra LLM call.
+    """
+    seeds: list[str] = [q.company] + list(q.aliases)
+    if not any(a.strip() for a in q.aliases):
+        # LLM gave no aliases — apply local heuristic so we don't query with
+        # the legal name alone (which is what failed in the 棒谷科技 report).
+        for v in _local_name_variants(q.company):
+            if v not in seeds:
+                seeds.append(v)
     out: list[str] = []
     seen: set[str] = set()
-    for n in [q.company] + list(q.aliases):
+    for n in seeds:
         s = n.strip()
         if s and s not in seen and len(s) <= 50:
             seen.add(s)
@@ -433,3 +451,65 @@ def _all_names(q: CompanyQuery, max_n: int = 4) -> list[str]:
         if len(out) >= max_n:
             break
     return out
+
+
+# v0.1.18 — Chinese corporate suffixes, ordered longest-first so greedy match
+# strips "科技股份有限公司" before falling back to "科技".
+_CN_CORPORATE_SUFFIXES: tuple[str, ...] = (
+    "科技股份有限公司", "科技集团有限公司", "集团股份有限公司",
+    "股份有限公司", "集团有限公司", "控股集团有限公司",
+    "科技集团", "科技股份", "集团", "科技", "股份", "有限公司", "公司",
+    "有限责任", "控股",
+)
+
+
+def _local_name_variants(company: str) -> list[str]:
+    """Cheap local aliases when LLM returned empty. Strips Chinese corporate
+    suffixes and splits CamelCase for English/Latin embedded in the name.
+    Returns 0-2 additional names (callers union with the original).
+    """
+    out: list[str] = []
+    s = company.strip()
+    if not s:
+        return out
+    # Chinese suffix strip — only one pass, longest match.
+    for suf in _CN_CORPORATE_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf) + 1:
+            stripped = s[: -len(suf)].strip()
+            if stripped and stripped != s:
+                out.append(stripped)
+            break
+    # CamelCase split (e.g. "AlibabaGroup" or "ByteDance").
+    # Only emit if there's a Latin chunk that itself has internal case.
+    if any("一" <= ch <= "鿿" for ch in s) is False:
+        # Pure Latin — try splitting on lowercase→uppercase boundaries.
+        import re
+        parts = re.split(r"(?<=[a-z])(?=[A-Z])", s)
+        if len(parts) > 1:
+            for p in parts:
+                p = p.strip()
+                if p and p not in out and p != s:
+                    out.append(p)
+                    break  # one CamelCase variant is enough
+    return out
+
+
+def review_pass2_queries(q: CompanyQuery, max_n: int = 3) -> list[str]:
+    """v0.1.18 — Broad-recall queries run without the Tavily include_domains
+    filter when pass-1 returns too few hits. These are the queries most likely
+    to surface UGC (小红书 / 脉脉职言 / 知乎) that Tavily can index but that
+    the strict allowlist rejects.
+
+    Capped at `max_n` to keep credits bounded (each pass-2 query costs ~3x a
+    pass-1 query because the search is unfiltered).
+    """
+    names = _all_names(q, max_n=2)
+    out: list[str] = []
+    for n in names:
+        out.extend([
+            f'"{n}" 知乎',
+            f'"{n}" 小红书',
+            f'"{n}" 体验 评价',
+        ])
+    # Take only the first max_n to bound cost.
+    return out[:max_n]

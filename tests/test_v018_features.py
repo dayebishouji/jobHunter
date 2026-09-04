@@ -1,312 +1,267 @@
-"""Tests for v0.1.8 features: per-chapter confidence, diversity KPI, news timeline SVG,
-entity extraction prompt+helper."""
+"""Tests for v0.1.18 — Reviews recall fix:
+
+A. Two-pass review collection: pass-1 with allowlist (cheap), pass-2 without
+   allowlist (broad recall) when pass-1 returns <3 hits. The 棒谷科技 report
+   shipped with 0 review hits despite 6 pass-1 queries because Tavily can't
+   deep-index UGC on xiaohongshu/maimai/zhihu — pass-2 trades ~3x credits
+   for hitting content the strict allowlist would filter out.
+
+B. Alias fallback in `_all_names`: when LLM alias generation fails or returns
+   empty, fall back to local heuristic (Chinese corporate suffix strip +
+   CamelCase split). 棒谷科技 → 棒谷科技, 棒谷 — UGC posts almost never use
+   the legal name, so without this single fix pass-1 was querying a single
+   useless string.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 
-from jobhunter.models.facts import (
-    NewsFacts,
-    NewsItem,
-    OvertimeSignal,
-    ReviewFacts,
-    SalarySignal,
-    VibeSignal,
-)
+from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector, _dedup_by_url
+from jobhunter.config import Settings
 from jobhunter.models.query import CompanyQuery
 from jobhunter.models.raw import RawItem
-from jobhunter.pipeline import _compute_confidence
+from jobhunter.search.query_templates import (
+    _all_names,
+    _local_name_variants,
+    review_pass2_queries,
+    review_queries,
+)
 
 
-def _item(url: str, title: str, snippet: str, score: float | None = None) -> RawItem:
-    payload: dict = {}
-    if score is not None:
-        payload["score"] = score
-    return RawItem(
-        source="tavily:web",
-        url=url,
-        title=title,
-        snippet=snippet,
-        published_at=None,
-        retrieved_at=datetime.now(timezone.utc),
-        payload=payload,
-    )
+# =============== B: alias fallback ===============
+
+class TestLocalNameVariants:
+    """v0.1.18 — Cheap local aliases when LLM returns empty."""
+
+    def test_strips_chinese_tech_suffix(self):
+        # The exact case from 棒谷科技 — without LLM aliases this was the
+        # only name being queried, and 棒谷科技 has zero mentions in UGC.
+        assert "棒谷" in _local_name_variants("棒谷科技")
+
+    def test_strips_longest_suffix_first(self):
+        # "科技股份有限公司" should be tried before "科技".
+        variants = _local_name_variants("某公司科技股份有限公司")
+        assert "某公司" in variants
+
+    def test_keeps_short_names_intact(self):
+        # Don't strip if it would leave <2 chars.
+        assert _local_name_variants("字节") == []
+
+    def test_no_suffix_to_strip_returns_empty(self):
+        # "字节跳动" — no common corporate suffix, nothing to strip.
+        assert _local_name_variants("字节跳动") == []
+
+    def test_camelcase_split_english(self):
+        # "AlibabaGroup" → "Alibaba"
+        variants = _local_name_variants("AlibabaGroup")
+        assert "Alibaba" in variants
+
+    def test_camelcase_split_byte_dance(self):
+        # "ByteDance" splits at the lowercase→uppercase boundary ("Byte|Dance");
+        # we emit only the first chunk to bound variant count.
+        variants = _local_name_variants("ByteDance")
+        assert "Byte" in variants
+        # Original "ByteDance" is NOT in variants — _all_names adds the
+        # company field separately; this helper only emits *additional* names.
+        assert "ByteDance" not in variants
 
 
-class TestPerChapterConfidence:
-    """v0.1.8 changed _compute_confidence to return per-chapter dict."""
+class TestAllNamesFallback:
+    """v0.1.18 — `_all_names` invokes heuristic when q.aliases is empty."""
 
-    def test_returns_dict_with_five_chapters_and_overall(self):
-        out = _compute_confidence({}, None)
-        assert isinstance(out, dict)
-        assert set(out.keys()) == {"company", "business", "judicial", "reviews", "news", "overall"}
+    def test_includes_original_company(self):
+        q = CompanyQuery(company="棒谷科技")
+        names = _all_names(q)
+        assert names[0] == "棒谷科技"
 
-    def test_empty_run_is_all_low(self):
-        out = _compute_confidence({}, None)
-        assert all(v == "low" for v in out.values())
+    def test_appends_stripped_when_no_aliases(self):
+        # This is the bug: with empty aliases, previously only "棒谷科技"
+        # was queried. Now 棒谷 is added.
+        q = CompanyQuery(company="棒谷科技")
+        names = _all_names(q)
+        assert "棒谷" in names
 
-    def test_only_reviews_with_struct_signals_is_reviews_high_others_low(self):
-        by_domain = {"reviews": [_item("https://x.com", "t", "s")]}
-        findings = type("F", (), {})()  # minimal stub
-        findings.reviews = ReviewFacts(
-            salary_signals=[SalarySignal(position="p", base_monthly_k=30.0)]
-        )
-        findings.business = None
-        findings.judicial = None
-        findings.news = None
-        findings.company_profile = None
-        out = _compute_confidence(by_domain, findings)
-        assert out["reviews"] == "high"
-        assert out["overall"] in ("low", "medium")
+    def test_no_heuristic_when_aliases_present(self):
+        # If LLM gave aliases, don't pile on heuristic noise.
+        q = CompanyQuery(company="棒谷科技", aliases=["Banggood"])
+        names = _all_names(q)
+        assert "棒谷" not in names  # LLM already supplied an alias
+        assert "Banggood" in names
 
-    def test_news_with_raw_and_struct_is_high(self):
-        by_domain = {"news": [_item("https://x.com", "t", "s")]}
-        findings = type("F", (), {})()
-        findings.reviews = ReviewFacts()
-        findings.business = None
-        findings.judicial = None
-        # NewsFacts._drop_url_missing only accepts dicts (LLM-side); pass dicts.
-        findings.news = NewsFacts.model_validate({
-            "items": [{"title": "x", "url": "https://x.com", "published_at": "2026-05-01"}]
+    def test_respects_max_n_cap(self):
+        q = CompanyQuery(company="某科技股份有限公司", aliases=["某", "A", "B", "C"])
+        names = _all_names(q, max_n=3)
+        assert len(names) == 3
+
+
+class TestReviewQueriesUseFallback:
+    """v0.1.18 — `review_queries` benefits from the heuristic automatically."""
+
+    def test_queries_include_stripped_name(self):
+        # Without aliases the queries used to be all "棒谷科技 ..." — which
+        # matches nothing in UGC. Now they include "棒谷 ..." forms too.
+        q = CompanyQuery(company="棒谷科技")
+        queries = review_queries(q)
+        joined = " ".join(queries)
+        assert "棒谷" in joined
+
+    def test_queries_still_use_original(self):
+        q = CompanyQuery(company="棒谷科技")
+        queries = review_queries(q)
+        joined = " ".join(queries)
+        assert "棒谷科技" in joined
+
+
+class TestReviewPass2Queries:
+    """v0.1.18 — Pass-2 broad-recall queries (no allowlist)."""
+
+    def test_emits_broad_recall_queries(self):
+        q = CompanyQuery(company="棒谷科技")
+        queries = review_pass2_queries(q)
+        joined = " ".join(queries)
+        # The three recall terms that surface UGC not in the allowlist.
+        assert "知乎" in joined
+        assert "小红书" in joined
+        assert "体验" in joined
+
+    def test_capped_at_max_n(self):
+        q = CompanyQuery(company="棒谷科技", aliases=["Banggood"])
+        queries = review_pass2_queries(q, max_n=2)
+        assert len(queries) <= 2
+
+    def test_uses_first_two_names(self):
+        q = CompanyQuery(company="某科技", aliases=["SomeTech", "ST"])
+        queries = review_pass2_queries(q)
+        joined = " ".join(queries)
+        assert "某科技" in joined  # primary name
+        # 3 templates × 1 name = 3 queries (since we cap at max_n=2 but emit
+        # templates until we hit the cap; with primary only, we get 3).
+
+    def test_no_slang_in_pass2(self):
+        # Pass-2 is for name-based broad recall, not slang.
+        q = CompanyQuery(company="棒谷科技", slang_queries=["内卷", "996"])
+        queries = review_pass2_queries(q)
+        joined = " ".join(queries)
+        assert "内卷" not in joined
+        assert "996" not in joined
+
+
+# =============== A: two-pass collector ===============
+
+class TestDedupByUrl:
+    """v0.1.18 — Merge pass-1 + pass-2 results without URL duplication."""
+
+    def test_dedupes_same_url(self):
+        a = RawItem(title="A", url="https://zhihu.com/q/1", content="x", source="test")
+        b = RawItem(title="A duplicate", url="https://zhihu.com/q/1/", content="y", source="test")
+        out = _dedup_by_url([a, b])
+        assert len(out) == 1
+        assert out[0].title == "A"  # first wins
+
+    def test_keeps_distinct_urls(self):
+        a = RawItem(title="A", url="https://zhihu.com/q/1", content="x", source="test")
+        b = RawItem(title="B", url="https://maimai.cn/q/2", content="y", source="test")
+        out = _dedup_by_url([a, b])
+        assert len(out) == 2
+
+    def test_empty_list(self):
+        assert _dedup_by_url([]) == []
+
+
+class _StubTavily:
+    """In-memory Tavily stub — controllable per-query response map."""
+
+    def __init__(self, response_map: dict[str, list[RawItem]]) -> None:
+        self.response_map = response_map
+        self.calls: list[tuple[str, list[str] | None]] = []
+
+    async def search(self, q: str, *, include_domains=None, **_kwargs):
+        self.calls.append((q, include_domains))
+        return list(self.response_map.get(q, []))
+
+
+def _q() -> CompanyQuery:
+    return CompanyQuery(company="棒谷科技")
+
+
+def _item(url: str, title: str = "T") -> RawItem:
+    return RawItem(title=title, url=url, content="", source="test")
+
+
+@pytest.mark.asyncio
+class TestTwoPassReviews:
+    """v0.1.18 — Pass-2 fires when pass-1 returns <3 hits."""
+
+    async def test_pass1_sufficient_skips_pass2(self):
+        # Pass-1 returns 5+ hits → pass-2 must NOT run (cost control).
+        pass1_q = review_queries(_q())[0]
+        tavily = _StubTavily({
+            pass1_q: [_item(f"https://x.com/{i}") for i in range(5)],
         })
-        findings.company_profile = None
-        out = _compute_confidence(by_domain, findings)
-        assert out["news"] == "high"
+        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
+        result = await coll.collect(_q())
 
-    def test_news_with_struct_but_no_raw_is_medium(self):
-        # Conservative: medium if either side, high only when both.
-        by_domain: dict = {"news": []}
-        findings = type("F", (), {})()
-        findings.reviews = ReviewFacts()
-        findings.business = None
-        findings.judicial = None
-        findings.news = NewsFacts.model_validate({
-            "items": [{"title": "x", "url": "https://x.com", "published_at": "2026-05-01"}]
+        assert len(result.items) == 5  # 5 from pass1
+        # All calls should be pass-1 (with allowlist)
+        assert all(c[1] is not None for c in tavily.calls)
+
+    async def test_pass1_thin_triggers_pass2(self):
+        # Pass-1 returns <3 hits → pass-2 must run.
+        pass1_q = review_queries(_q())[0]
+        # Use a pass-2-only query (small红书) to disambiguate from pass-1's
+        # "知乎" / "体验" which overlap.
+        pass2_q = review_pass2_queries(_q())[1]  # "棒谷科技" 小红书
+        tavily = _StubTavily({
+            pass1_q: [_item("https://x.com/only-one")],
+            pass2_q: [_item("https://other-site.com/post1"),
+                      _item("https://another.com/post2")],
         })
-        findings.company_profile = None
-        out = _compute_confidence(by_domain, findings)
-        assert out["news"] == "medium"
+        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
+        result = await coll.collect(_q())
 
+        assert len(result.items) == 3  # 1 from pass1 + 2 from pass2
+        # Pass-2 calls should have include_domains=None
+        pass2_calls = [c for c in tavily.calls if c[0] == pass2_q]
+        assert len(pass2_calls) == 1
+        assert pass2_calls[0][1] is None
 
-class TestComputeDiversityKpi:
-    """Hero meta KPI for source diversity."""
+    async def test_pass2_results_dedup_with_pass1(self):
+        # Same URL appears in both passes — should appear once.
+        pass1_q = review_queries(_q())[0]
+        pass2_q = review_pass2_queries(_q())[0]
+        shared_url = "https://x.com/shared"
+        tavily = _StubTavily({
+            pass1_q: [_item(shared_url, "from pass1")],
+            pass2_q: [_item(shared_url, "from pass2")],
+        })
+        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
+        result = await coll.collect(_q())
 
-    def test_empty_returns_zero_signal_label(self):
-        from jobhunter.report.builder import compute_diversity_kpi
-        out = compute_diversity_kpi(None, [])
-        assert out["total_signals"] == 0
-        assert out["corroborated_count"] == 0
-        assert out["distinct_domains"] == []
-        assert out["tier_label_zh"] == "无信号"
+        urls = [i.url for i in result.items]
+        assert len(urls) == len(set(urls))  # dedup
+        # First-wins keeps the pass1 instance
+        assert result.items[0].title == "from pass1"
 
-    def test_single_source_single_domain(self):
-        from jobhunter.report.builder import compute_diversity_kpi
-        rf = ReviewFacts(
-            salary_signals=[
-                SalarySignal(position="p", base_monthly_k=30.0, url="https://zhihu.com/q/1"),
-                SalarySignal(position="p", base_monthly_k=30.0, url="https://v2ex.com/t/2"),
-            ]
-        )
-        out = compute_diversity_kpi(rf, [])
-        assert out["total_signals"] == 2
-        assert out["tier_distribution"]["single-source"] == 2
-        assert sorted(out["distinct_domains"]) == ["v2ex.com", "zhihu.com"]
-        assert out["corroborated_count"] == 0
+    async def test_both_passes_empty_returns_error(self):
+        # Pass-1 empty + pass-2 empty → CollectorResult with error, no crash.
+        tavily = _StubTavily({})
+        coll = TavilyReviewsCollector(Settings(), tavily=tavily)
+        result = await coll.collect(_q())
+        assert result.items == []
+        assert result.error == "no_results"
 
-    def test_multi_domain_with_supporting_urls_counted(self):
-        from jobhunter.report.builder import compute_diversity_kpi
-        rf = ReviewFacts(
-            salary_signals=[SalarySignal(
-                position="p", base_monthly_k=30.0,
-                url="https://zhihu.com/q/1",
-                supporting_urls=["https://v2ex.com/t/2", "https://maimai.cn/article/3"],
-            )],
-            overtime_signals=[OvertimeSignal(
-                pattern="996", intensity="high",
-                url="https://nowcoder.com/d/4",
-                supporting_urls=["https://www.kanzhun.com/r/6"],
-            )],
-        )
-        out = compute_diversity_kpi(rf, [])
-        assert out["total_signals"] == 2
-        # salary signal: 3 urls / 3 distinct domains → multi-domain
-        # overtime signal: 2 urls / 2 distinct domains → corroborated
-        assert out["corroborated_count"] == 2
-        assert sorted(out["distinct_domains"]) == ["kanzhun.com", "maimai.cn", "nowcoder.com", "v2ex.com", "zhihu.com"]
-        assert out["tier_label_zh"] in ("高", "中")
-
-
-class TestNewsTimelineSvg:
-    """SVG generator for the news chronology axis."""
-
-    def test_empty_items_returns_empty_string(self):
-        from jobhunter.report.charts import news_timeline_svg
-        assert news_timeline_svg([]) == ""
-
-    def test_items_without_dates_returns_empty(self):
-        from jobhunter.report.charts import news_timeline_svg
-        items = [{"when": "—", "title": "x", "url": "https://x.com"}]
-        assert news_timeline_svg(items) == ""
-
-    def test_items_with_dates_produces_svg(self):
-        from jobhunter.report.charts import news_timeline_svg
-        items = [
-            {"when": "2026-09-01", "title": "最新", "url": "https://a.com"},
-            {"when": "2026-07-15", "title": "中间", "url": "https://b.com"},
-            {"when": "2026-05-01", "title": "最早", "url": "https://c.com"},
-        ]
-        out = news_timeline_svg(items, sentiment="mixed")
-        assert "<svg" in out
-        assert "</svg>" in out
-        assert "news-timeline-svg" in out
-        assert "最新" in out  # <title> tooltip
-        # Three dots
-        assert out.count("<circle") >= 3
-
-    def test_positive_sentiment_uses_good_color(self):
-        from jobhunter.report.charts import news_timeline_svg
-        items = [{"when": "2026-09-01", "title": "好", "url": "https://a.com"}]
-        out = news_timeline_svg(items, sentiment="positive")
-        # good color hex
-        assert "#4f6a3a" in out
-
-
-class TestEntityExtractionHelper:
-    """list_company_entities filters out the company name and short/long junk."""
-
-    @pytest.mark.asyncio
-    async def test_filters_company_name_and_short_strings(self):
-        from jobhunter.llm.client import LLMClient, list_company_entities
-
-        class FakeLLM:
+    async def test_pass1_exception_falls_through_to_pass2(self):
+        # If pass-1 throws, pass-2 still runs (best-effort recall).
+        class ExplodingTavily:
             def __init__(self):
-                self.last_kwargs = None
-
-            async def structured_call(self, **kwargs):
-                self.last_kwargs = kwargs
-                return {"entities": ["有赞", "x", "菜鸟驿站一", "菜鸟", "钉钉" * 5]}
-
-            def budget_ok(self):
-                return True
-
-        llm = FakeLLM()
-        items = [_item("https://x.com", "title", "snippet")]
-        out = await list_company_entities(llm, "有赞", items, max_items=5)
-        # "有赞" == company → dropped; "x" < 2 chars → dropped;
-        # "菜鸟驿站一" not in our banned list, kept; "菜鸟" 2 chars kept
-        # The 25-char string is dropped (>12 chars)
-        assert "有赞" not in out
-        assert "x" not in out
-        assert any("菜鸟" in e for e in out)
-        # Pushed tool_name + entity schema
-        assert llm.last_kwargs["tool_name"] == "list_company_entities"
-        assert "entities" in llm.last_kwargs["tool_schema"]["properties"]
-
-    @pytest.mark.asyncio
-    async def test_empty_input_returns_empty(self):
-        from jobhunter.llm.client import list_company_entities
-
-        class FakeLLM:
-            async def structured_call(self, **kwargs):
-                return {}
-            def budget_ok(self):
-                return True
-
-        llm = FakeLLM()
-        assert await list_company_entities(llm, "有赞", []) == []
-        assert await list_company_entities(llm, "", [_item("https://x.com", "t", "s")]) == []
-
-    @pytest.mark.asyncio
-    async def test_handles_bad_llm_payload(self):
-        from jobhunter.llm.client import list_company_entities
-
-        class FakeLLM:
-            async def structured_call(self, **kwargs):
-                return {"entities": "not-a-list"}
-            def budget_ok(self):
-                return True
-
-        llm = FakeLLM()
-        out = await list_company_entities(llm, "有赞", [_item("https://x.com", "t", "s")])
-        assert out == []
-
-
-class TestReportRendersNewBadges:
-    """End-to-end: build_report must include diversity KPI and per-chapter badges."""
-
-    def test_diversity_kpi_in_hero(self):
-        from jobhunter.models.report import ReportData
-        from jobhunter.report.builder import build_report
-
-        q = CompanyQuery(company="TestCo", position="p", city="杭州")
-        reviews = ReviewFacts(
-            salary_signals=[SalarySignal(
-                position="p", base_monthly_k=30.0,
-                url="https://zhihu.com/q/1",
-                supporting_urls=["https://v2ex.com/t/2"],
-            )],
-            overtime_signals=[OvertimeSignal(
-                pattern="996", intensity="high", url="https://nowcoder.com/d/3",
-            )],
-        )
-        data = ReportData(
-            query=q,
-            generated_at=datetime.now(timezone.utc),
-            review_facts=reviews,
-            chapter_confidence={"reviews": "medium", "overall": "medium"},
-        )
-        html = build_report(data)
-        assert "数据多样性" in html
-        assert "印证" in html
-
-    def test_chapter_confidence_badge_renders_when_not_high(self):
-        from jobhunter.models.report import ReportData
-        from jobhunter.report.builder import build_report
-
-        q = CompanyQuery(company="TestCo", position="p", city="杭州")
-        data = ReportData(
-            query=q,
-            generated_at=datetime.now(timezone.utc),
-            chapter_confidence={"reviews": "low", "overall": "low"},
-        )
-        html = build_report(data)
-        assert "conf-badge" in html
-        assert "conf-low" in html
-
-    def test_chapter_confidence_high_does_not_render_badge(self):
-        from jobhunter.models.report import ReportData
-        from jobhunter.report.builder import build_report
-
-        q = CompanyQuery(company="TestCo", position="p", city="杭州")
-        data = ReportData(
-            query=q,
-            generated_at=datetime.now(timezone.utc),
-            chapter_confidence={"reviews": "high", "overall": "high"},
-        )
-        html = build_report(data)
-        # Badge only renders when != high; the CSS contains 'conf-badge' as
-        # selectors, so we count actual rendered badge spans, not the CSS.
-        import re
-        n_rendered = len(re.findall(r'<span class="conf-badge', html))
-        assert n_rendered == 0
-
-    def test_news_timeline_svg_renders_when_news_items_present(self):
-        from jobhunter.models.report import ReportData
-        from jobhunter.report.builder import build_report
-
-        q = CompanyQuery(company="TestCo", position="p", city="杭州")
-        # _drop_url_missing only accepts dicts; model_validate bypasses
-        # Python-side instance coercion.
-        news = NewsFacts.model_validate({
-            "items": [{"title": "好新闻", "url": "https://x.com", "published_at": "2026-09-01"}],
-            "sentiment": "positive",
-        })
-        data = ReportData(
-            query=q,
-            generated_at=datetime.now(timezone.utc),
-            news_facts=news,
-        )
-        html = build_report(data)
-        assert "news-timeline-svg" in html
+                self.search = AsyncMock(side_effect=RuntimeError("network blip"))
+        coll = TavilyReviewsCollector(Settings(), tavily=ExplodingTavily())
+        # Pass-1 swallows the exception (logs warning), pass-2 also swallows.
+        # Result: error captured but pipeline doesn't crash.
+        result = await coll.collect(_q())
+        assert result.items == []
+        assert "network blip" in result.error

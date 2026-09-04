@@ -30,7 +30,12 @@ def _q(company: str = "AC", position: str = "", city: str = "", **kw) -> Company
 
 class TestAllNames:
     def test_company_only(self):
-        assert _all_names(_q("阿里巴巴集团")) == ["阿里巴巴集团"]
+        # v0.1.18 — When aliases is empty, the local-heuristic fallback also
+        # emits the suffix-stripped form. "阿里巴巴集团" → ["阿里巴巴集团", "阿里巴巴"].
+        # The original is always first.
+        names = _all_names(_q("阿里巴巴集团"))
+        assert names[0] == "阿里巴巴集团"
+        assert "阿里巴巴" in names
 
     def test_dedup_aliases(self):
         names = _all_names(_q("阿里", aliases=["ali", "ali"]))
@@ -54,9 +59,12 @@ class TestAllNames:
 class TestReviewQueriesExpansion:
     def test_no_aliases(self):
         q = review_queries(_q("阿里巴巴集团"))
-        assert all('"阿里巴巴集团"' in s for s in q)
-        # 6 base queries
-        assert len(q) == 6
+        # v0.1.18 — heuristic adds "阿里巴巴" → 6 × 2 = 12 queries.
+        assert len(q) == 12
+        # Original name still appears (in the first-name queries).
+        assert any('"阿里巴巴集团"' in s for s in q)
+        # Stripped form is also queried.
+        assert any('"阿里巴巴"' in s for s in q)
 
     def test_with_aliases_doubles_queries(self):
         q = review_queries(_q("阿里巴巴集团", aliases=["阿里"]))
@@ -86,14 +94,14 @@ class TestReviewSlangExpansion:
 
     def test_no_slang_means_no_extras(self):
         q = review_queries(_q("阿里巴巴集团"))
-        # 6 base queries, no slang
-        assert len(q) == 6
+        # v0.1.18 — heuristic adds "阿里巴巴" as a second name → 6 base × 2 = 12.
+        assert len(q) == 12
 
     def test_with_slang_appends_company_anchored_and_bare(self):
         slang = ["内卷", "ICU", "摆烂"]
         q = review_queries(_q("阿里巴巴集团", slang_queries=slang))
-        # 6 base + 3 × 2 (anchored + bare) = 12
-        assert len(q) == 12
+        # v0.1.18 — heuristic adds "阿里巴巴" → 6 × 2 base + 3 × 2 slang = 18.
+        assert len(q) == 18
         assert any("阿里巴巴集团 内卷" in s for s in q)
         assert any("阿里巴巴集团 ICU" in s for s in q)
         assert any(s == "摆烂" for s in q)
