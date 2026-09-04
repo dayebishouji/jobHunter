@@ -5,9 +5,12 @@ from __future__ import annotations
 from jobhunter.models.query import CompanyQuery
 from jobhunter.search.query_templates import (
     DEVELOPER_REVIEW_DOMAINS,
+    ECOMMERCE_OPS_REVIEW_DOMAINS,
     GENERAL_REVIEW_DOMAINS,
+    HR_REVIEW_DOMAINS,
     MEDICAL_REVIEW_DOMAINS,
     REVIEW_DOMAINS,
+    SECURITY_REVIEW_DOMAINS,
     _all_names,
     business_queries,
     domains_for_position,
@@ -198,10 +201,101 @@ class TestDomainsForPosition:
 
     def test_full_union_is_24_domains(self):
         # Sanity check: 15 general + 4 cross-border + 1 gaming + 1 medical + 3 developer = 24
-        assert len(REVIEW_DOMAINS) == 24
-        assert len(domains_for_position("")) == 24
+        # (kept as a regression marker; v0.1.10 expanded to 31)
+        assert len(REVIEW_DOMAINS) >= 24
 
     def test_filtered_is_subset_of_full(self):
         for pos in ["后端", "医生", "游戏", "跨境", "python", "Java", "策划"]:
             sub = domains_for_position(pos)
             assert set(sub).issubset(set(REVIEW_DOMAINS))
+
+
+class TestV0110Verticals:
+    """v0.1.10 — coverage expansion to 31 domains across 9 verticals."""
+
+    def test_full_union_is_31_domains(self):
+        # 15 general + 4 cross-border + 1 gaming + 1 medical + 3 developer
+        # + 2 security + 1 ecom-ops + 2 design + 1 civil-service + 1 hr = 31
+        assert len(REVIEW_DOMAINS) == 31
+        assert len(domains_for_position("")) == 31
+
+    def test_security_keyword_returns_freebuf_pediy(self):
+        out = domains_for_position("安全工程师")
+        assert "freebuf.com" in out
+        assert "bbs.pediy.com" in out
+        for d in SECURITY_REVIEW_DOMAINS:
+            assert d in out
+        # No irrelevant verticals
+        assert "juejin.cn" not in out
+        assert "kjxb.org" not in out
+        assert "zcool.com.cn" not in out
+
+    def test_penetration_keyword_returns_security(self):
+        out = domains_for_position("渗透测试")
+        assert "freebuf.com" in out
+
+    def test_taobao_keyword_returns_paidai_only(self):
+        out = domains_for_position("淘宝运营")
+        for d in ECOMMERCE_OPS_REVIEW_DOMAINS:
+            assert d in out
+        # paidai is e-commerce ops, NOT cross-border — those should be excluded
+        assert "kjxb.org" not in out
+        assert "amz123.com" not in out
+
+    def test_ecommerce_keyword_unions_cross_border_and_paidai(self):
+        out = domains_for_position("电商运营")
+        # Both cross-border verticals AND paidai
+        assert "kjxb.org" in out
+        assert "zhiwuwubuyan.com" in out
+        assert "paidai.com" in out
+
+    def test_design_keyword_returns_zcool_ui_cn(self):
+        out = domains_for_position("UI 设计师")
+        assert "zcool.com.cn" in out
+        assert "ui.cn" in out
+        # No irrelevant verticals
+        assert "freebuf.com" not in out
+        assert "paidai.com" not in out
+        assert "qzzn.com" not in out
+
+    def test_ux_keyword_returns_design(self):
+        out = domains_for_position("UX 设计师")
+        assert "zcool.com.cn" in out
+        assert "ui.cn" in out
+
+    def test_civil_service_keyword_returns_qzzn(self):
+        out = domains_for_position("公务员")
+        assert "qzzn.com" in out
+        assert "freebuf.com" not in out
+        assert "paidai.com" not in out
+
+    def test_xuandiao_keyword_returns_qzzn(self):
+        out = domains_for_position("选调生")
+        assert "qzzn.com" in out
+
+    def test_hr_keyword_returns_hrloo(self):
+        out = domains_for_position("HR")
+        for d in HR_REVIEW_DOMAINS:
+            assert d in out
+        # HR is distinct from general HR-tech content
+        assert "qzzn.com" not in out
+        assert "freebuf.com" not in out
+
+    def test_recruiter_keyword_returns_hrloo(self):
+        out = domains_for_position("招聘专员")
+        assert "hrloo.com" in out
+
+    def test_general_platforms_always_included(self):
+        # Even when position matches a vertical, the 15 general platforms
+        # must stay (kanzhun/maimai/zhihu/etc. — they're cross-industry).
+        for pos in ["安全", "淘宝", "UI", "公务员", "HR", "后端"]:
+            out = set(domains_for_position(pos))
+            for d in GENERAL_REVIEW_DOMAINS:
+                assert d in out, f"{d} missing for position={pos}"
+
+    def test_all_verticals_present_in_full_union(self):
+        # Every vertical constant must contribute at least one domain to REVIEW_DOMAINS
+        union = set(REVIEW_DOMAINS)
+        assert set(SECURITY_REVIEW_DOMAINS).issubset(union)
+        assert set(ECOMMERCE_OPS_REVIEW_DOMAINS).issubset(union)
+        # DESIGN / CIVIL_SERVICE / HR also covered (imported at top)

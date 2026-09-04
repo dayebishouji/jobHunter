@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 179 tests
+pytest                        # 192 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.9）
+## 已知限制（v0.1.10）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -93,7 +93,8 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.6 网络词召回**：依赖 LLM 生成 5–8 个 slang 查询词（内卷 / ICU / 摆烂 / 跑路 …）提升 UGC 召回；抽取后报告 chapter V 末尾会附「网络词解读」列表；如 LLM 失败则跳过
 - **v0.1.8 递归 sub-query**：round 1 后用 LLM 抽 3-5 个公司内部实体（产品/品牌/部门/创始人）作为 round 2 查询别名；硬上限 1 轮 / 5 个实体
 - **v0.1.8 数据多样性 KPI**：每条 signal 旁的 tier-badge（待核实/单一来源/多源印证/跨域印证）+ hero meta 的「数据多样性」pill 反映 cross-source corroboration
-- **v0.1.9 垂直行业召回域**：REVIEW_DOMAINS 扩到 24 个域名，覆盖跨境电商（kjxb.org / zhiwuwubuyan.com / amz123.com / 10100.com）+ 游戏（ngabbs.com）+ 医护（bbs.dxy.com）+ 程序员（juejin.cn / segmentfault.com / oschina.net）；通过 `domains_for_position(position)` 按岗位关键词过滤 Tavily allowlist 实现成本控制，空岗位/未识别岗位 → 全量 fallback，已识别岗位（如 "后端" / "医生" / "跨境运营"）→ 通用 15 域名 + 匹配垂直，避免在无关行业浪费 credits
+- **v0.1.9 垂直行业召回域**：REVIEW_DOMAINS 扩到 24 个域名（跨境 + 游戏 + 医护 + 程序员），通过 `domains_for_position(position)` 按岗位关键词过滤 Tavily allowlist 实现成本控制
+- **v0.1.10 召回域覆盖 9 个垂直**：REVIEW_DOMAINS 扩到 31 个域名，新增 网安（freebuf.com / bbs.pediy.com） / 电商运营（paidai.com） / 设计（zcool.com.cn / ui.cn） / 公考（qzzn.com） / HR（hrloo.com）；POSITION_DOMAIN_HINTS 加 30+ 关键词，"淘宝/京东/拼多多/天猫" 精准圈定派代（非跨境），"电商" 触发跨境+派代 union，"UI/UX/平面/视觉" 触发站酷+UI中国
 - 不支持：批量多公司、SQLite watchlist、Web 服务、PDF 导出、Playwright（v0.2 候选）
 
 ## 免责

@@ -59,12 +59,40 @@ DEVELOPER_REVIEW_DOMAINS: list[str] = [
     "oschina.net",             # OSChina — 开源圈吐槽
 ]
 
+# v0.1.10 — coverage expansion (4 more verticals).
+SECURITY_REVIEW_DOMAINS: list[str] = [
+    "freebuf.com",             # FreeBuf — 国内安全媒体龙头
+    "bbs.pediy.com",           # 看雪论坛 — 25 年老牌逆向社区
+]
+
+ECOMMERCE_OPS_REVIEW_DOMAINS: list[str] = [
+    "paidai.com",              # 派代 — 电商运营最大社区（淘系 / 京东 / 拼多多）
+]
+
+DESIGN_REVIEW_DOMAINS: list[str] = [
+    "zcool.com.cn",            # 站酷 — 1700 万+ 设计师
+    "ui.cn",                   # UI 中国 — UI/UX 垂直
+]
+
+CIVIL_SERVICE_REVIEW_DOMAINS: list[str] = [
+    "qzzn.com",                # QZZN — 公务员 / 事业编老牌论坛（已没落但仍有内容）
+]
+
+HR_REVIEW_DOMAINS: list[str] = [
+    "hrloo.com",               # 三茅人力资源网 — 400 万 HR 用户
+]
+
 REVIEW_DOMAINS: list[str] = sorted({
     *GENERAL_REVIEW_DOMAINS,
     *CROSS_BORDER_REVIEW_DOMAINS,
     *GAMING_REVIEW_DOMAINS,
     *MEDICAL_REVIEW_DOMAINS,
     *DEVELOPER_REVIEW_DOMAINS,
+    *SECURITY_REVIEW_DOMAINS,
+    *ECOMMERCE_OPS_REVIEW_DOMAINS,
+    *DESIGN_REVIEW_DOMAINS,
+    *CIVIL_SERVICE_REVIEW_DOMAINS,
+    *HR_REVIEW_DOMAINS,
 })
 
 # Position keyword → vertical allowlist. Lowercase substring match against
@@ -78,9 +106,15 @@ POSITION_DOMAIN_HINTS: dict[str, list[str]] = {
     "amazon": CROSS_BORDER_REVIEW_DOMAINS,
     "shopify": ["zhiwuwubuyan.com", "10100.com"],
     "ebay": ["zhiwuwubuyan.com", "amz123.com"],
-    "电商": CROSS_BORDER_REVIEW_DOMAINS,
+    "电商": sorted({*CROSS_BORDER_REVIEW_DOMAINS, *ECOMMERCE_OPS_REVIEW_DOMAINS}),
     "temu": ["zhiwuwubuyan.com", "10100.com"],
     "tiktok": CROSS_BORDER_REVIEW_DOMAINS,
+    # 电商运营（淘系 / 京东 / 拼多多 — 派代主场）
+    "淘宝": ECOMMERCE_OPS_REVIEW_DOMAINS,
+    "天猫": ECOMMERCE_OPS_REVIEW_DOMAINS,
+    "京东": ECOMMERCE_OPS_REVIEW_DOMAINS,
+    "拼多多": ECOMMERCE_OPS_REVIEW_DOMAINS,
+    "淘系": ECOMMERCE_OPS_REVIEW_DOMAINS,
     # 游戏
     "游戏": GAMING_REVIEW_DOMAINS,
     "策划": GAMING_REVIEW_DOMAINS,
@@ -106,6 +140,33 @@ POSITION_DOMAIN_HINTS: dict[str, list[str]] = {
     "android": DEVELOPER_REVIEW_DOMAINS,
     "ios": DEVELOPER_REVIEW_DOMAINS,
     "嵌入式": DEVELOPER_REVIEW_DOMAINS,
+    # 网安 / 渗透 (v0.1.10)
+    "安全": SECURITY_REVIEW_DOMAINS,
+    "网安": SECURITY_REVIEW_DOMAINS,
+    "渗透": SECURITY_REVIEW_DOMAINS,
+    "漏洞": SECURITY_REVIEW_DOMAINS,
+    "逆向": SECURITY_REVIEW_DOMAINS,
+    "信息安全": SECURITY_REVIEW_DOMAINS,
+    # 设计 (v0.1.10)
+    "设计": DESIGN_REVIEW_DOMAINS,
+    "ui": DESIGN_REVIEW_DOMAINS,
+    "ux": DESIGN_REVIEW_DOMAINS,
+    "平面": DESIGN_REVIEW_DOMAINS,
+    "视觉": DESIGN_REVIEW_DOMAINS,
+    "美工": DESIGN_REVIEW_DOMAINS,
+    "交互": DESIGN_REVIEW_DOMAINS,
+    # 公考 / 事业编 (v0.1.10)
+    "公务员": CIVIL_SERVICE_REVIEW_DOMAINS,
+    "事业编": CIVIL_SERVICE_REVIEW_DOMAINS,
+    "选调生": CIVIL_SERVICE_REVIEW_DOMAINS,
+    "公考": CIVIL_SERVICE_REVIEW_DOMAINS,
+    "国考": CIVIL_SERVICE_REVIEW_DOMAINS,
+    "省考": CIVIL_SERVICE_REVIEW_DOMAINS,
+    # HR / 人力 (v0.1.10)
+    "hr": HR_REVIEW_DOMAINS,
+    "人力": HR_REVIEW_DOMAINS,
+    "招聘": HR_REVIEW_DOMAINS,
+    "hrbp": HR_REVIEW_DOMAINS,
 }
 
 
