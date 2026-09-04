@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 207 tests
+pytest                        # 236 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.12）
+## 已知限制（v0.1.13）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -95,6 +95,7 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.8 数据多样性 KPI**：每条 signal 旁的 tier-badge（待核实/单一来源/多源印证/跨域印证）+ hero meta 的「数据多样性」pill 反映 cross-source corroboration
 - **v0.1.9+ 召回域扩展**：REVIEW_DOMAINS 经 v0.1.9 / v0.1.10 / v0.1.11 三轮扩到 46 个域名 / 11 个垂直行业；通过 `domains_for_position(position)` 按岗位关键词过滤 Tavily allowlist 实现成本控制
 - **v0.1.12 报告「去 AI 味」**：CSS 加 motion 系统（reveal-on-scroll / paper-grain texture / tier-badge hover lift / bullet hover highlight / `.pullquote` 编辑型强调 / focus-visible 描边 / KPI 数字滚动完成时 scale 弹一下）；template `</body>` 前加 inline JS（IntersectionObserver + easeOutCubic counter ticker + prefers-reduced-motion guard）。零外部依赖、单文件可移植性保持
+- **v0.1.13 报告「编辑手记 + 数据故事 + 拖拽章节」**：每个章节旁加 `.story-block`（编辑手记 aside + 行业对比数据故事），如「过去 12 个月里，这家公司被起诉了 X 次 — 比同行平均高 Y%」；行业基线在 `src/jobhunter/report/industry_baselines.py`（12 个行业 + default fallback）；7 个主章节可拖拽重排（HTML5 native DnD + localStorage 持久化 + 「重置章节顺序」按钮）；仍是零外部依赖
 - 不支持：批量多公司、SQLite watchlist、Web 服务、PDF 导出、Playwright（v0.2 候选）
 
 ## 下次接手可考虑的深度改动

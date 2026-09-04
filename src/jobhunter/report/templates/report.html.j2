@@ -15,6 +15,33 @@
     <span class="conf-badge {{ cls }}" title="该章数据置信度（高=原始材料+结构化信号均有；中=两者之一；低=缺）">{{ label }}</span>
   {% endif %}
 {%- endmacro %}
+
+{# === Macro: v0.1.13 — 编辑手记 aside + 数据故事 lines ===
+   Renders a single block per chapter showing:
+   - <aside class="edit-note">…</aside> if edit_notes has this chapter
+   - <ul class="data-story">…</ul> if data_stories has this chapter
+   Both are pure deterministic content from builder.compute_chapter_stories(). #}
+{% macro story_block(chapter_key) -%}
+  {% set en = edit_notes.get(chapter_key) %}
+  {% set ds = data_stories.get(chapter_key) %}
+  {% if en or ds %}
+  <aside class="story-block" aria-label="编辑手记与数据故事">
+    {% if en %}
+    <div class="edit-note">
+      <span class="edit-note-tag">编辑手记</span>
+      <span class="edit-note-body">{{ en }}</span>
+    </div>
+    {% endif %}
+    {% if ds and ds|length > 0 %}
+    <ul class="data-story">
+      {% for line in ds %}
+      <li class="data-story-line">{{ line }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </aside>
+  {% endif %}
+{%- endmacro %}
 <link rel="stylesheet"
   href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;700&display=swap" />
 <style>{{ css | safe }}</style>
@@ -121,14 +148,18 @@
 {% endif %}
 
 {# ====================== CHAPTER I — 公司画像 ====================== #}
-<section class="chapter" id="ch-company">
+<div class="chapters-container" id="chapters-container">
+<button type="button" class="reorder-reset" id="reorder-reset" hidden title="恢复默认章节顺序">↺ 重置章节顺序</button>
+
+<section class="chapter" id="ch-company" draggable="true" data-chapter-key="company">
   <header class="chapter-head">
-    <div class="chapter-num">I<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>I<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">公司画像 {{ conf_badge('company') }}</h2>
       <p class="chapter-dek">主营业务、产品矩阵、融资轨迹与前景——读懂这家公司是谁</p>
     </div>
   </header>
+  {{ story_block('company') }}
 
   {% set cp = data.company_profile %}
   {% if not cp %}
@@ -262,14 +293,15 @@
 </section>
 
 {# ====================== CHAPTER II — 工商基本面 ====================== #}
-<section class="chapter" id="ch-business">
+<section class="chapter" id="ch-business" draggable="true" data-chapter-key="business">
   <header class="chapter-head">
-    <div class="chapter-num">II<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>II<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">工商基本面 {{ conf_badge('business') }}</h2>
       <p class="chapter-dek">法人、注册资本、经营状态、股权结构——法律登记视角</p>
     </div>
   </header>
+  {{ story_block('business') }}
 
   {% set b = data.business_facts %}
   {% if not b %}
@@ -320,14 +352,15 @@
 </section>
 
 {# ====================== CHAPTER III — 司法风险 ====================== #}
-<section class="chapter" id="ch-judicial">
+<section class="chapter" id="ch-judicial" draggable="true" data-chapter-key="judicial">
   <header class="chapter-head">
-    <div class="chapter-num">III<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>III<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">司法风险 {{ conf_badge('judicial') }}</h2>
       <p class="chapter-dek">诉讼、被执行——是历史欠账还是经营常态</p>
     </div>
   </header>
+  {{ story_block('judicial') }}
 
   {% set j = data.judicial_facts %}
   {% if not j %}
@@ -358,14 +391,15 @@
 </section>
 
 {# ====================== CHAPTER IV — 薪酬与福利 ====================== #}
-<section class="chapter" id="ch-salary">
+<section class="chapter" id="ch-salary" draggable="true" data-chapter-key="reviews">
   <header class="chapter-head">
-    <div class="chapter-num">IV<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>IV<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">薪酬与福利 {{ conf_badge('reviews') }}</h2>
       <p class="chapter-dek">base / 月数 / 奖金——钱给得如何,数字说了算</p>
     </div>
   </header>
+  {{ story_block('reviews') }}
 
   {% set r = data.review_facts %}
   {% if not r or not r.salary_signals %}
@@ -417,14 +451,15 @@
 </section>
 
 {# ====================== CHAPTER V — 加班与工作强度 ====================== #}
-<section class="chapter" id="ch-overtime">
+<section class="chapter" id="ch-overtime" draggable="true" data-chapter-key="reviews">
   <header class="chapter-head">
-    <div class="chapter-num">V<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>V<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">加班与工作强度 {{ conf_badge('reviews') }}</h2>
       <p class="chapter-dek">节奏模式与强度——一周到底要花多少小时在这家公司</p>
     </div>
   </header>
+  {{ story_block('reviews') }}
 
   {% set r = data.review_facts %}
   {% if not r or not r.overtime_signals %}
@@ -492,14 +527,15 @@
 </section>
 
 {# ====================== CHAPTER VI — 团队氛围 ====================== #}
-<section class="chapter" id="ch-vibe">
+<section class="chapter" id="ch-vibe" draggable="true" data-chapter-key="reviews">
   <header class="chapter-head">
-    <div class="chapter-num">VI<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>VI<span class="slash">/</span><span class="total">VI</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">团队氛围与文化 {{ conf_badge('reviews') }}</h2>
       <p class="chapter-dek">评价里的情绪倾向——一线员工的真实体感</p>
     </div>
   </header>
+  {{ story_block('reviews') }}
 
   {% set r = data.review_facts %}
   {% if not r or not r.vibe_signals %}
@@ -570,14 +606,15 @@
 </section>
 
 {# ====================== CHAPTER VII — 近期舆情 ====================== #}
-<section class="chapter" id="ch-news">
+<section class="chapter" id="ch-news" draggable="true" data-chapter-key="news">
   <header class="chapter-head">
-    <div class="chapter-num">Ⅶ<span class="slash">/</span><span class="total">Ⅷ</span></div>
+    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>Ⅶ<span class="slash">/</span><span class="total">Ⅷ</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">近期舆情 {{ conf_badge('news') }}</h2>
       <p class="chapter-dek">最近的新闻与公开信号——公司在公众眼中什么样</p>
     </div>
   </header>
+  {{ story_block('news') }}
 
   {% set n = data.news_facts %}
   {% if not n or not n.items %}
@@ -614,6 +651,8 @@
   </div>
   {% endif %}
 </section>
+
+</div>{# /.chapters-container — main 7 chapters are draggable; optional tail chapters below remain in fixed order #}
 
 {# ====================== CHAPTER VIII — 面试反问 ====================== #}
 {% if data.interview_questions %}
@@ -823,6 +862,109 @@
         });
       }, { threshold: 0.4 });
       counterTargets.forEach(function (el) { counterObs.observe(el); });
+    }
+  }
+
+  // ---------- v0.1.13 — Chapter drag-reorder ----------
+  // Native HTML5 drag-and-drop on .chapter elements inside #chapters-container.
+  // Order is persisted to localStorage so the user can craft a personalized export.
+  // Gated by prefers-reduced-motion for the visual indicator; drag itself is fine.
+  var chaptersContainer = document.getElementById('chapters-container');
+  var reorderReset = document.getElementById('reorder-reset');
+  if (chaptersContainer) {
+    var chapters = chaptersContainer.querySelectorAll('.chapter');
+    var dragSrcKey = null;
+    var STORAGE_KEY = 'jobhunter-chapter-order-v1';
+
+    function getStoredOrder() {
+      try {
+        var raw = window.localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+    function setStoredOrder(order) {
+      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(order)); } catch (e) {}
+    }
+    function clearStoredOrder() {
+      try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    }
+    function currentOrder() {
+      return Array.prototype.map.call(chapters, function (c) {
+        return c.getAttribute('data-chapter-key') || c.id;
+      });
+    }
+    function applyOrder(order) {
+      if (!order || !order.length) return false;
+      var byKey = {};
+      Array.prototype.forEach.call(chapters, function (c) {
+        var k = c.getAttribute('data-chapter-key') || c.id;
+        byKey[k] = c;
+      });
+      var placed = 0;
+      order.forEach(function (k) {
+        var node = byKey[k];
+        if (node) {
+          chaptersContainer.appendChild(node);
+          placed++;
+        }
+      });
+      return placed > 0;
+    }
+    function showReset(show) {
+      if (!reorderReset) return;
+      if (show) reorderReset.removeAttribute('hidden');
+      else reorderReset.setAttribute('hidden', '');
+    }
+
+    // Restore previous order on load
+    var stored = getStoredOrder();
+    var defaultOrder = currentOrder();
+    if (stored && JSON.stringify(stored) !== JSON.stringify(defaultOrder)) {
+      applyOrder(stored);
+      showReset(true);
+    }
+
+    chapters.forEach(function (chapter) {
+      chapter.addEventListener('dragstart', function (e) {
+        dragSrcKey = chapter.getAttribute('data-chapter-key') || chapter.id;
+        chapter.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', dragSrcKey); } catch (err) {}
+        }
+      });
+      chapter.addEventListener('dragend', function () {
+        chapter.classList.remove('dragging');
+        chapters.forEach(function (c) { c.classList.remove('drag-over'); });
+      });
+      chapter.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        chapter.classList.add('drag-over');
+      });
+      chapter.addEventListener('dragleave', function () {
+        chapter.classList.remove('drag-over');
+      });
+      chapter.addEventListener('drop', function (e) {
+        e.preventDefault();
+        chapter.classList.remove('drag-over');
+        if (!dragSrcKey) return;
+        var srcEl = chaptersContainer.querySelector('[data-chapter-key="' + dragSrcKey + '"]');
+        if (!srcEl || srcEl === chapter) return;
+        // Insert src before target
+        chaptersContainer.insertBefore(srcEl, chapter);
+        var newOrder = currentOrder();
+        setStoredOrder(newOrder);
+        showReset(true);
+      });
+    });
+
+    if (reorderReset) {
+      reorderReset.addEventListener('click', function () {
+        clearStoredOrder();
+        applyOrder(defaultOrder);
+        showReset(false);
+      });
     }
   }
 })();

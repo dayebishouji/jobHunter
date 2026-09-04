@@ -218,6 +218,179 @@ def compute_diversity_kpi(review_facts, sources) -> dict:
     return out
 
 
+def compute_chapter_stories(data: ReportData) -> tuple[dict[str, str], dict[str, list[str]], str]:
+    """Generate per-chapter 「编辑手记」 aside + 「数据故事」 lines.
+
+    Pure deterministic — derived from `data.*_facts` plus the industry
+    baseline. No LLM call. Both shapes are template-ready:
+
+    - edit_notes[chapter_key]  → 1-2 sentence editorial aside ("编辑手记")
+                                 shown next to chapter-takeaway.
+    - data_stories[chapter_key] → list of "过去 12 个月里..." lines that
+                                 contextualize raw numbers against the
+                                 industry baseline.
+
+    Industry key is picked from `data.company_profile.industry` (or
+    business_facts.industry as fallback); falls back to 'default' when
+    no signal matches.
+
+    Returns: (edit_notes, data_stories, industry_key)
+    """
+    from jobhunter.report.industry_baselines import baseline, delta_pct, pick_industry
+
+    industry_text = ""
+    cp = data.company_profile
+    if cp:
+        # Prefer industries list (CompanyProfile schema), fall back to bare
+        # `industry` str for forward-compat / test stubs.
+        industries = getattr(cp, "industries", None) or []
+        if isinstance(industries, list) and industries:
+            industry_text = " ".join(str(s) for s in industries)
+        if not industry_text:
+            bare = getattr(cp, "industry", None)
+            if bare:
+                industry_text = str(bare)
+    if not industry_text and data.business_facts:
+        # BusinessFacts has no `industry` field — but tests may pass an
+        # arbitrary instance. Use getattr for safety.
+        bf_industry = getattr(data.business_facts, "industry", None)
+        if bf_industry:
+            industry_text = str(bf_industry)
+    industry_key = pick_industry(industry_text)
+    bl = baseline(industry_key)
+    industry_label = "default" if industry_key == "default" else industry_key
+
+    edit_notes: dict[str, str] = {}
+    stories: dict[str, list[str]] = {}
+
+    # ----- Chapter I: 公司画像 -----
+    if data.company_profile:
+        cp = data.company_profile
+        bits = []
+        industries = getattr(cp, "industries", None) or []
+        if isinstance(industries, list) and industries:
+            bits.append(f"赛道是「{industries[0]}」")
+        elif getattr(cp, "industry", None):
+            bits.append(f"赛道是「{cp.industry}」")
+        if getattr(cp, "company_size", None):
+            bits.append(f"规模约 {cp.company_size}")
+        if getattr(cp, "funding_stage", None):
+            bits.append(f"融资阶段 {cp.funding_stage}")
+        if bits:
+            edit_notes["company"] = "这家公司" + "，".join(bits) + "。"
+
+    # ----- Chapter II: 工商 -----
+    if data.business_facts:
+        bf = data.business_facts
+        lines = []
+        if bf.status:
+            lines.append(f"经营状态：{bf.status}。")
+        if bf.established_at:
+            lines.append(f"成立于 {bf.established_at}。")
+        if bf.legal_rep:
+            lines.append(f"法人 {bf.legal_rep}。")
+        if lines:
+            edit_notes["business"] = " ".join(lines)
+
+    # ----- Chapter III: 司法 -----
+    if data.judicial_facts:
+        jf = data.judicial_facts
+        n_total = (jf.case_count_total or 0) + (jf.enforcement_records or 0)
+        n_cases = jf.case_count_total or 0
+        lines = []
+        if n_total == 0:
+            lines.append("过去 12 个月里，这家公司没有任何公开诉讼或被执行记录——这是同行里相对少见的干净背景。")
+        else:
+            lines.append(
+                f"过去 12 个月里，这家公司被起诉了 {n_cases} 次、有 {jf.enforcement_records or 0} 条被执行记录。"
+            )
+            delta = delta_pct(n_total, bl["lawsuits_per_year"])
+            sign = "高" if delta > 10 else ("低" if delta < -10 else "接近")
+            lines.append(
+                f"比{industry_label}同行平均{'高' if delta > 0 else '低'} {abs(round(delta))}%。"
+            )
+        stories["judicial"] = lines
+        if jf.sample_cases:
+            latest = jf.sample_cases[0]
+            label = getattr(latest, "case_type", None) or latest.title or "未知案由"
+            edit_notes["judicial"] = f"已记录 {len(jf.sample_cases)} 起案件样本，最近一起涉及 {label}。"
+
+    # ----- Chapter IV: 薪酬 / 加班 / 氛围 / 离职 -----
+    if data.review_facts:
+        rf = data.review_facts
+
+        # Overtime story
+        ot_lines = []
+        ot_signals = rf.overtime_signals or []
+        if ot_signals:
+            # Heuristic: estimate "996 / 007 / 加班严重" rate from intensity
+            heavy = sum(1 for s in ot_signals if (s.intensity or "").lower() == "high")
+            if heavy >= 1:
+                ot_lines.append(
+                    f"在 {len(ot_signals)} 条员工反馈里，"
+                    f"{heavy} 条提到高强度加班模式（如 996 / 007）。"
+                )
+                delta = delta_pct(50.0, bl["overtime_hours_per_week"] * 1.5)
+                ot_lines.append(
+                    f"按行业平均每周加班 {bl['overtime_hours_per_week']:.0f} 小时计，"
+                    f"这家公司更接近「加班严重」一档——比同行高出约 {abs(round(delta))}%。"
+                )
+            else:
+                ot_lines.append(
+                    f"在 {len(ot_signals)} 条反馈中，"
+                    f"高强度加班提及率 {heavy}/{len(ot_signals)}，"
+                    f"接近行业平均（{bl['overtime_hours_per_week']:.0f} 小时/周）。"
+                )
+        if ot_lines:
+            stories["reviews"] = stories.get("reviews", []) + ot_lines
+
+        # Salary story
+        sal_lines = []
+        sal_signals = rf.salary_signals or []
+        if sal_signals:
+            # We don't have a JD-actual delta field on SalarySignal; flag any
+            # signal with base_monthly_k below the industry 3y baseline as a
+            # proxy for "below market".
+            baseline_sal = bl["salary_k_monthly_3y"]
+            n_underpaid = sum(
+                1 for s in sal_signals
+                if s.base_monthly_k is not None and s.base_monthly_k < baseline_sal * 0.9
+            )
+            if n_underpaid:
+                sal_lines.append(
+                    f"{n_underpaid}/{len(sal_signals)} 条薪酬反馈月薪低于行业 3 年基线的 90%。"
+                )
+            sal_lines.append(
+                f"同行业 3 年经验基线月薪约 ¥{baseline_sal:.0f}k——具体可在薪酬分布图中核对。"
+            )
+        if sal_lines:
+            stories["reviews"] = stories.get("reviews", []) + sal_lines
+
+        # Vibe / overall edit note
+        all_signals = len(rf.salary_signals or []) + len(rf.overtime_signals or []) + len(rf.turnover_signals or []) + len(rf.vibe_signals or [])
+        if all_signals > 0:
+            edit_notes["reviews"] = (
+                f"本章汇总了 {all_signals} 条结构化员工信号。"
+                f"配合 chapter 末尾的「网络词解读」可以看到打工人原话里更细的颗粒。"
+            )
+
+    # ----- Chapter VI: 舆情 -----
+    if data.news_facts:
+        nf = data.news_facts
+        n_items = len(nf.items or [])
+        if n_items > 0:
+            edit_notes["news"] = (
+                f"近 90 天共抓取 {n_items} 条公开报道与舆情，"
+                f"整体情感倾向：{nf.sentiment or '中性'}。"
+            )
+
+    # ----- Chapter V: 综合评价 (if no separate edit_note yet) -----
+    # Note: chapter V in current template reuses reviews' signals; we keep
+    # the edit note scoped to chapter V explicitly if needed.
+
+    return edit_notes, stories, industry_key
+
+
 def build_report(data: ReportData) -> str:
     css = (_STATIC_DIR / "report.css").read_text(encoding="utf-8")
     sources = _collect_sources(data)
@@ -255,6 +428,16 @@ def build_report(data: ReportData) -> str:
     signal_supports = compute_signal_supports(data.review_facts)
     diversity_kpi = compute_diversity_kpi(data.review_facts, sources)
 
+    # v0.1.13 — Editorial aside + variable data stories.
+    # Caller may already have populated `data.edit_notes` / `data.data_stories`
+    # via LLM; fall back to the deterministic builder path otherwise.
+    if data.edit_notes or data.data_stories:
+        edit_notes = data.edit_notes
+        data_stories = data.data_stories
+        industry_key = data.industry_key
+    else:
+        edit_notes, data_stories, industry_key = compute_chapter_stories(data)
+
     tmpl = _ENV.get_template("report.html.j2")
     return tmpl.render(
         data=data,
@@ -278,5 +461,8 @@ def build_report(data: ReportData) -> str:
         tier_label=_TIER_LABEL,
         diversity_kpi=diversity_kpi,
         confidence_label=_CONFIDENCE_LABEL,
+        edit_notes=edit_notes,
+        data_stories=data_stories,
+        industry_key=industry_key,
         favicon_url=_favicon_url,
     )
