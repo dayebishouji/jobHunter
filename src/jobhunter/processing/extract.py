@@ -415,6 +415,7 @@ async def consolidate(
     facets: dict[str, object | None],
 ) -> AggregatedFindings | None:
     """Second-pass consolidation across all five domain extractions."""
+    """Second-pass consolidation across all five domain extractions."""
     spec = extract_tool_spec("aggregate")
     business = facets.get("business")
     reviews = facets.get("reviews")
