@@ -185,6 +185,7 @@ async def _interactive_flow() -> None:
 @click.option("--no-news", is_flag=True, default=False, help="跳过新闻")
 @click.option("--output", "-o", default=None, type=click.Path(path_type=Path), help="输出目录")
 @click.option("--no-open", is_flag=True, default=False, help="不自动打开浏览器")
+@click.option("--compare", default="", help="同行业对比公司（逗号分隔，如「美团,京东」）；每多 1 家 ≈ 多 1 次轻量级 pipeline")
 def run_cmd(
     company: str,
     position: str,
@@ -193,6 +194,7 @@ def run_cmd(
     no_news: bool,
     output: Path | None,
     no_open: bool,
+    compare: str,
 ) -> None:
     """非交互模式（脚本友好）。"""
     _setup_logging()
@@ -209,6 +211,7 @@ def run_cmd(
         include_judicial=not no_judicial,
         include_news=not no_news,
     )
+    peer_names = [n.strip() for n in compare.split(",") if n.strip()] if compare else []
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -218,7 +221,7 @@ def run_cmd(
         task = progress.add_task("运行中...", total=None)
         try:
             artifacts = asyncio.run(
-                run(q, output_dir=output, open_browser=False)
+                run(q, output_dir=output, open_browser=False, peer_names=peer_names)
             )
         except Exception as e:  # noqa: BLE001
             # Rich's Windows legacy renderer can UnicodeEncodeError on GBK consoles

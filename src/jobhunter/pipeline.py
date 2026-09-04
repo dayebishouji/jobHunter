@@ -63,6 +63,7 @@ async def run(
     settings: Settings | None = None,
     output_dir: Path | None = None,
     open_browser: bool = False,
+    peer_names: list[str] | None = None,
 ) -> ReportArtifacts:
     """Execute the full pipeline and write HTML to disk.
 
@@ -193,6 +194,16 @@ async def run(
         chapter_confidence=chapter_confidence,
     )
 
+    # v0.1.15 — Cross-company comparison (opt-in via --compare flag).
+    # Each peer is a lightweight re-run (extract + scoring only); Tavily cache
+    # makes repeats within 24h free.
+    if peer_names:
+        try:
+            logger.info("running %d peer comparison(s): %s", len(peer_names), peer_names)
+            data.peer_comparison = await run_peer_comparison(query, peer_names, settings=settings)
+        except Exception as e:  # noqa: BLE001 - peer run is best-effort
+            logger.warning("peer comparison failed: %s", e)
+
     html = build_report(data)
     ts = datetime.now().strftime("%Y%m%d-%H%M")
     slug = make_slug(query, ts)
@@ -214,6 +225,131 @@ async def run(
         tokens_in=llm.tokens_in,
         tokens_out=llm.tokens_out,
     )
+
+
+# ============================================================================
+# v0.1.15 — Cross-company comparison (lightweight peer runs)
+# ============================================================================
+
+async def _build_peer_summary(
+    query: CompanyQuery,
+    settings: Settings,
+    cache: object | None,
+) -> "PeerCompany | None":
+    """Run a stripped-down pipeline for one peer and distill a PeerCompany.
+
+    Cost control:
+      - Reuses the parent's Tavily cache so repeats inside 24h are free
+      - Skips alias generation, slang generation, round-2 sub-query,
+        consolidation inferences, and interview-question generation
+      - Only the 5-domain extract pass runs (with two-pass + keyword
+        fallback from v0.1.14), so per-peer cost ≈ 1× main run.
+    """
+    from jobhunter.config import load_settings as _load
+    from jobhunter.llm.client import LLMClient
+    from jobhunter.models.facts import AggregatedFindings
+    from jobhunter.models.report import PeerCompany
+    from jobhunter.processing.extract import extract_all_domains
+    from jobhunter.processing.normalize import normalize as _normalize
+    from jobhunter.report.builder import build_report
+    from jobhunter.report.scoring import compute_axes
+    from jobhunter.search.tavily_client import TavilyClient
+    from jobhunter.utils.cache import FileCache as _FileCache
+    from jobhunter.utils.http import make_client
+
+    settings = settings or _load()
+    cache = cache or _FileCache()
+    tavily = TavilyClient(settings, cache)
+    try:
+        async with make_client() as http:
+            from jobhunter.collectors.registry import build_all
+            collectors = build_all(settings, tavily=tavily, http=http)
+            results = await asyncio.gather(*(c.safe_collect(query) for c in collectors))
+        by_domain = _normalize(results)
+
+        llm = LLMClient(settings)
+        facets = await extract_all_domains(llm, by_domain)
+
+        findings = AggregatedFindings(
+            business=facets.get("business") if isinstance(facets.get("business"), BusinessFacts) else None,
+            reviews=facets.get("reviews") if isinstance(facets.get("reviews"), ReviewFacts) else None,
+            news=facets.get("news") if isinstance(facets.get("news"), NewsFacts) else None,
+            judicial=facets.get("judicial") if isinstance(facets.get("judicial"), JudicialFacts) else None,
+            company_profile=facets.get("company_info") if isinstance(facets.get("company_info"), CompanyProfile) else None,
+        )
+
+        axes = compute_axes(findings, by_domain, list(results))
+        avg_score = round(sum(a.stars for a in axes) / len(axes), 2) if axes else None
+
+        def _ax(stars_attr: str) -> int | None:
+            for a in axes:
+                if a.key == stars_attr:
+                    return a.stars
+            return None
+
+        # Salary median: take the median of salary_signals.base_monthly_k
+        salary_vals = [s.base_monthly_k for s in (findings.reviews.salary_signals or []) if s.base_monthly_k]
+        median = sorted(salary_vals)[len(salary_vals) // 2] if salary_vals else None
+
+        # Overtime pattern: most common pattern in signals
+        ot_patterns = [s.pattern for s in (findings.reviews.overtime_signals or [])]
+        ot_dominant = max(set(ot_patterns), key=ot_patterns.count) if ot_patterns else None
+
+        return PeerCompany(
+            name=query.company,
+            industry=(findings.company_profile.industries[0] if findings.company_profile and findings.company_profile.industries else None),
+            overall_score=avg_score,
+            axis_overtime=_ax("overtime"),
+            axis_judicial=_ax("judicial"),
+            axis_salary=_ax("salary"),
+            axis_business=_ax("business"),
+            axis_vibe=_ax("vibe"),
+            salary_median_k=median,
+            overtime_pattern=ot_dominant,
+            case_count_total=(findings.judicial.case_count_total if findings.judicial else None),
+            news_sentiment=(findings.news.sentiment if findings.news else None),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("peer run failed for %s: %s", query.company, e)
+        return PeerCompany(name=query.company, error=str(e))
+
+
+async def run_peer_comparison(
+    target_query: CompanyQuery,
+    peer_names: list[str],
+    settings: Settings | None = None,
+) -> list[dict]:
+    """Build a list of compact peer summaries. Includes the target as the
+    first row so the comparison table has a unified baseline.
+
+    Returns a list of PeerCompany.model_dump() dicts in the order
+    [target, peer1, peer2, ...]. `None` entries for failed peers are
+    dropped so the template can iterate without crashing.
+    """
+    from jobhunter.models.report import PeerCompany
+
+    settings = settings or load_settings()
+    cache = FileCache()
+    tavily = TavilyClient(settings, cache)
+    # First row = target itself (re-using the target_query).
+    target_peer = await _build_peer_summary(target_query, settings, cache)
+
+    out: list[dict] = []
+    if target_peer:
+        out.append(target_peer.model_dump())
+
+    # Concurrency 2 — bounded to avoid Tavily rate limits
+    sem = asyncio.Semaphore(2)
+    async def _run_one(name: str) -> PeerCompany | None:
+        async with sem:
+            peer_q = CompanyQuery(company=name, position=target_query.position, city=target_query.city)
+            return await _build_peer_summary(peer_q, settings, cache)
+
+    peers = await asyncio.gather(*(_run_one(n) for n in peer_names))
+    for p in peers:
+        if p is not None:
+            out.append(p.model_dump())
+    return out
 
 
 def _compute_confidence(

@@ -32,6 +32,7 @@ from jobhunter.models.facts import (
     AggregatedFindings,
     BusinessFacts,
     CompanyProfile,
+    InterviewSignal,
     JudicialFacts,
     NewsFacts,
     OvertimeSignal,
@@ -193,6 +194,13 @@ def _merge_reviews(first: ReviewFacts, second: ReviewFacts) -> ReviewFacts:
                     out.append(s)
         return out
 
+    # Union on interview_style (set semantics)
+    style = list(dict.fromkeys([*(first.interview_style or []), *(second.interview_style or [])]))
+    # Interview rounds: take whichever side has a value
+    rounds = first.interview_rounds if first.interview_rounds else second.interview_rounds
+    # Difficulty: prefer a non-未知 side
+    diff = first.interview_difficulty if (first.interview_difficulty and first.interview_difficulty != "未知") else second.interview_difficulty
+
     return ReviewFacts(
         salary_signals=_dedup_by_url(first.salary_signals or [], second.salary_signals or []),
         overtime_signals=_dedup_by_url(first.overtime_signals or [], second.overtime_signals or []),
@@ -200,6 +208,10 @@ def _merge_reviews(first: ReviewFacts, second: ReviewFacts) -> ReviewFacts:
         turnover_signals=_dedup_by_url(first.turnover_signals or [], second.turnover_signals or []),
         jd_gap_signals=_dedup_by_url(first.jd_gap_signals or [], second.jd_gap_signals or []),
         slang_glossary=_dedup_by_url(first.slang_glossary or [], second.slang_glossary or []),
+        interview_signals=_dedup_by_url(first.interview_signals or [], second.interview_signals or []),
+        interview_rounds=rounds,
+        interview_style=style,
+        interview_difficulty=diff,
         source_urls=list({*(first.source_urls or []), *(second.source_urls or [])}),
     )
 

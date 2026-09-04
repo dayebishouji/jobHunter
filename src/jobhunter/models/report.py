@@ -27,6 +27,29 @@ class SourceEntry(BaseModel):
     url: HttpUrl
 
 
+class PeerCompany(BaseModel):
+    """v0.1.15 — Compact summary of a same-industry peer company.
+
+    Built by `pipeline._build_peer_summary()` from a lightweight (no-LLM-
+    consolidation) re-run of the main pipeline. Stored in `ReportData.
+    peer_comparison` (as dict) and rendered as a comparison table next to
+    the target company.
+    """
+    name: str
+    industry: str | None = None
+    overall_score: float | None = None
+    axis_overtime: int | None = None
+    axis_judicial: int | None = None
+    axis_salary: int | None = None
+    axis_business: int | None = None
+    axis_vibe: int | None = None
+    salary_median_k: float | None = None
+    overtime_pattern: str | None = None
+    case_count_total: int | None = None
+    news_sentiment: Literal["positive", "neutral", "negative", "mixed"] | None = None
+    error: str | None = None  # non-null if peer run failed
+
+
 class ReportData(BaseModel):
     query: CompanyQuery
     generated_at: datetime
@@ -57,3 +80,7 @@ class ReportData(BaseModel):
     edit_notes: dict[str, str] = Field(default_factory=dict)
     data_stories: dict[str, list[str]] = Field(default_factory=dict)
     industry_key: str = "default"
+
+    # v0.1.15 — 1mo / 3mo / 6mo 试用期观察清单 + 同行业对比
+    trial_checklist: dict[str, list[str]] = Field(default_factory=dict)
+    peer_comparison: list[dict] = Field(default_factory=list)  # PeerCompany.model_dump() list

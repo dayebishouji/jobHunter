@@ -1477,3 +1477,103 @@ a:focus-visible, button:focus-visible, .tier-badge:focus-visible {
     transition: none;
   }
 }
+
+/* ---------- v0.1.15 — 试用期观察清单 + 同行业对比 ---------- */
+
+.trial-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin: 18px 0;
+}
+@media (max-width: 720px) {
+  .trial-grid { grid-template-columns: 1fr; }
+}
+.trial-col {
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  padding: 14px 14px 8px;
+  background: rgba(244, 240, 232, 0.4);
+}
+.trial-col-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--rule-soft);
+}
+.trial-col-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+.trial-col-label {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.trial-col .bullets {
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.trial-col .bullets li {
+  margin-bottom: 6px;
+}
+
+.peer-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 13px;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+.peer-table th,
+.peer-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.peer-table th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 600;
+  border-bottom: 2px solid var(--ink);
+}
+.peer-table .peer-target {
+  background: rgba(166, 38, 38, 0.06);
+}
+.peer-table .peer-target td:first-child {
+  border-left: 3px solid var(--accent);
+}
+.peer-table td {
+  color: var(--ink);
+}
+.peer-table td:not(:first-child) {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--ink-soft);
+}
+
+/* ---------- Interview-process chips ---------- */
+.chip-neutral {
+  background: rgba(28, 28, 28, 0.05);
+  color: var(--ink-soft);
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--rule-soft);
+}

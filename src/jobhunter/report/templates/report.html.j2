@@ -666,11 +666,61 @@
 
 </div>{# /.chapters-container — main 7 chapters are draggable; optional tail chapters below remain in fixed order #}
 
-{# ====================== CHAPTER VIII — 面试反问 ====================== #}
+{# ====================== CHAPTER VIII — 面试流程 ====================== #}
+{% set rfp = data.review_facts %}
+{% if rfp and (rfp.interview_rounds or rfp.interview_style or rfp.interview_difficulty or rfp.interview_signals) %}
+<section class="chapter" id="ch-interview-process">
+  <header class="chapter-head">
+    <div class="chapter-num">Ⅷ<span class="slash">/</span><span class="total">Ⅷ</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">面试流程</h2>
+      <p class="chapter-dek">这家公司是怎么面试的——轮数 / 题型 / 难度，让你能针对性准备</p>
+    </div>
+  </header>
+
+  <div class="stat-strip">
+    {% if rfp.interview_rounds %}
+    <div class="stat">
+      <div class="stat-key">典型轮数</div>
+      <div class="stat-val">{{ rfp.interview_rounds }}<span class="unit">轮</span></div>
+    </div>
+    {% endif %}
+    {% if rfp.interview_difficulty %}
+    <div class="stat">
+      <div class="stat-key">难度</div>
+      <div class="stat-val {{ 'bad' if rfp.interview_difficulty == 'hard' else ('mid' if rfp.interview_difficulty == 'medium' else 'good') }}">
+        {{ {'easy':'容易','medium':'中等','hard':'偏难','未知':'未知'}[rfp.interview_difficulty] }}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if rfp.interview_style %}
+  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">题型标签</h3>
+  <div>{% for s in rfp.interview_style %}<span class="chip" style="margin-right:6px;">{{ s }}</span>{% endfor %}</div>
+  {% endif %}
+
+  {% if rfp.interview_signals %}
+  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">原始观察</h3>
+  <ul class="bullets">
+    {% for sig in rfp.interview_signals[:8] %}
+    <li>
+        <span class="chip chip-neutral" style="font-size:11px;">{{ {'rounds':'轮数','style':'题型','difficulty':'难度','process':'流程','feedback':'反馈'}[sig.aspect] }}</span>
+        <strong>{{ sig.observation or '—' }}</strong>
+        {% if sig.evidence %}<blockquote class="evidence">"{{ sig.evidence }}"</blockquote>{% endif %}
+        {% if sig.url %} · <a href="{{ sig.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+{# ====================== CHAPTER IX — 面试反问 ====================== #}
 {% if data.interview_questions %}
 <section class="chapter" id="ch-interview">
   <header class="chapter-head">
-    <div class="chapter-num">Ⅷ<span class="slash">/</span><span class="total">Ⅷ</span></div>
+    <div class="chapter-num">Ⅸ<span class="slash">/</span><span class="total">Ⅸ</span></div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">面试反问清单</h2>
       <p class="chapter-dek">基于本次尽调的真实问题——把球踢回去,问出底色</p>
@@ -684,6 +734,94 @@
     </div>
     {% endfor %}
   </div>
+</section>
+{% endif %}
+
+{# ====================== CHAPTER X — 试用期观察清单 ====================== #}
+{% if trial_checklist and (trial_checklist.get('1mo') or trial_checklist.get('3mo') or trial_checklist.get('6mo')) %}
+<section class="chapter" id="ch-trial">
+  <header class="chapter-head">
+    <div class="chapter-num">Ⅹ<span class="slash">/</span><span class="total">Ⅹ</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">试用期观察清单</h2>
+      <p class="chapter-dek">1 / 3 / 6 个月三个 checkpoint——重点观察什么、什么时候该警觉</p>
+    </div>
+  </header>
+
+  <div class="trial-grid">
+    {% for key, label in [('1mo','入职 1 个月 · 信号校准'), ('3mo','入职 3 个月 · 转正博弈'), ('6mo','入职 6 个月 · 长期判断')] %}
+      {% set items = trial_checklist.get(key, []) %}
+      {% if items %}
+      <div class="trial-col">
+        <div class="trial-col-head">
+          <span class="trial-col-num">{{ loop.index }}</span>
+          <span class="trial-col-label">{{ label }}</span>
+        </div>
+        <ul class="bullets">
+          {% for it in items %}<li>{{ it }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="chapter-takeaway" style="margin-top:24px;border-left:3px solid var(--risk-bad);">
+    <div class="chapter-takeaway-tag">硬性底线</div>
+    <div>以上任何一项信号恶化（高强度加班固化 / 同事扎堆离职 / 工资延迟）—— 立刻开始看外部机会，不要等。</div>
+  </div>
+</section>
+{% endif %}
+
+{# ====================== 同行业对比 ====================== #}
+{% if peer_comparison and peer_comparison|length > 0 %}
+<section class="chapter" id="ch-peers">
+  <header class="chapter-head">
+    <div class="chapter-num">⊕<span class="slash">·</span><span class="total">vs</span></div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">同行业对比</h2>
+      <p class="chapter-dek">{{ data.query.company }} 在同行业坐标轴里的相对位置</p>
+    </div>
+  </header>
+
+  <table class="peer-table">
+    <thead>
+      <tr>
+        <th>公司</th>
+        <th>综合分</th>
+        <th>加班强度</th>
+        <th>司法风险</th>
+        <th>薪酬诚信</th>
+        <th>工商风险</th>
+        <th>文化氛围</th>
+        <th>典型月薪</th>
+      </tr>
+    </thead>
+    <tbody>
+      {# Target row first, highlighted #}
+      <tr class="peer-target">
+        <td><strong>{{ data.query.company }}</strong>（目标）</td>
+        <td>{{ peer_comparison[0].overall_score if peer_comparison[0].overall_score is not none else '—' }}{% if peer_comparison[0].overall_score %}/5{% endif %}</td>
+        <td>{{ peer_comparison[0].axis_overtime or '—' }}{% if peer_comparison[0].axis_overtime %}/5{% endif %}</td>
+        <td>{{ peer_comparison[0].axis_judicial or '—' }}{% if peer_comparison[0].axis_judicial %}/5{% endif %}</td>
+        <td>{{ peer_comparison[0].axis_salary or '—' }}{% if peer_comparison[0].axis_salary %}/5{% endif %}</td>
+        <td>{{ peer_comparison[0].axis_business or '—' }}{% if peer_comparison[0].axis_business %}/5{% endif %}</td>
+        <td>{{ peer_comparison[0].axis_vibe or '—' }}{% if peer_comparison[0].axis_vibe %}/5{% endif %}</td>
+        <td>{{ peer_comparison[0].salary_median_k or '—' }}{% if peer_comparison[0].salary_median_k is not none %}k{% endif %}</td>
+      </tr>
+      {% for peer in peer_comparison[1:] %}
+      <tr>
+        <td>{{ peer.name }}</td>
+        <td>{{ peer.overall_score if peer.overall_score is not none else '—' }}{% if peer.overall_score %}/5{% endif %}</td>
+        <td>{{ peer.axis_overtime or '—' }}{% if peer.axis_overtime %}/5{% endif %}</td>
+        <td>{{ peer.axis_judicial or '—' }}{% if peer.axis_judicial %}/5{% endif %}</td>
+        <td>{{ peer.axis_salary or '—' }}{% if peer.axis_salary %}/5{% endif %}</td>
+        <td>{{ peer.axis_business or '—' }}{% if peer.axis_business %}/5{% endif %}</td>
+        <td>{{ peer.axis_vibe or '—' }}{% if peer.axis_vibe %}/5{% endif %}</td>
+        <td>{{ peer.salary_median_k or '—' }}{% if peer.salary_median_k is not none %}k{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </section>
 {% endif %}
 

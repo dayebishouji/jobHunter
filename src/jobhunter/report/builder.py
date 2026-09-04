@@ -218,6 +218,74 @@ def compute_diversity_kpi(review_facts, sources) -> dict:
     return out
 
 
+def compute_trial_checklist(data: ReportData) -> dict[str, list[str]]:
+    """v0.1.15 — Generate the 1mo / 3mo / 6mo 试用期观察清单.
+
+    Pure deterministic — derived from data.review_facts + data.business_facts +
+    data.judicial_facts. Each checkpoint returns a list of concrete things to
+    watch; some are universal (HR 反向背调 baseline), some are driven by what
+    we already know about this company.
+
+    Returns a dict keyed by checkpoint label:
+      {"1mo": [...], "3mo": [...], "6mo": [...]}
+    """
+    one_mo: list[str] = []
+    three_mo: list[str] = []
+    six_mo: list[str] = []
+
+    rf = data.review_facts
+    bf = data.business_facts
+    jf = data.judicial_facts
+    cp = data.company_profile
+
+    # ----- 1 个月：信号校准（JD 说的与实际是否一致）-----
+    one_mo.append("试用期薪资是否打折？合同 / offer / 实际到账 三处是否完全一致。")
+    one_mo.append("团队平均下班时间 — 是否与 JD / 面试官说的节奏匹配；前两周记录自己每天实际工时。")
+    one_mo.append("导师 / 直接 leader 是否明确给你分了 1-2 个具体可交付任务，没有就主动要。")
+    if rf and any((s.intensity or "").lower() == "high" for s in (rf.overtime_signals or [])):
+        one_mo.append("加班强度提示 — 评价里存在高强度加班信号，1 个月内重点观察：是否真的 996、调休是否落地、加班费怎么算。")
+    if rf and any((v.sentiment or "") == "negative" for v in (rf.vibe_signals or [])):
+        one_mo.append("氛围信号 — 评价里有负面氛围信号，新人 1 个月内通常感受不到，留意正式员工私下闲聊的关键词（push、甩锅、PUA、画饼）。")
+
+    # ----- 3 个月：合同 / 社保 / 转正路径-----
+    three_mo.append("试用期转正流程 — 是否清晰？转正答辩 / KPI 评分标准有没有提前书面化。")
+    three_mo.append("社保 / 公积金 — 按实际工资基数还是按最低基数？查「支付宝 - 社保」小程序可一键核对。")
+    three_mo.append("股权 / 期权（如 JD 提到）— 兑现周期、cliff 期、行权价都要白纸黑字。")
+    if rf:
+        jd_gap = rf.jd_gap_signals or []
+        if jd_gap:
+            three_mo.append("JD vs 实际 — 评价里有「JD 承诺 vs 实际工作」gap 记录；3 个月时对比实际工作内容与入职时面试承诺。")
+    if bf and bf.anomaly_listed:
+        three_mo.append("经营异常历史 — 公司曾被列入经营异常名录，3 个月时复核是否已移出（gsxt.gov.cn 公开查询）。")
+
+    # ----- 6 个月：留存 / 现金流 / 长期博弈-----
+    six_mo.append("同期入职的同事还在不在？3-6 个月是互联网公司新员工离职高峰，留意主动离职比例。")
+    six_mo.append("公司现金流信号 — 工资发放是否准时？报销周期是否合理？季度奖是否按时发？")
+    six_mo.append("晋升通道 — 同期进的人 6 个月内有没有人拿到晋升 / 调薪？")
+    if jf and (jf.case_count_total or 0) > 0:
+        six_mo.append("司法历史 — 公司累计诉讼较多，6 个月时确认你所在业务的诉讼与你无关；留意是否要个人签字担保。")
+    if cp and getattr(cp, "funding_stage", None) and cp.funding_stage not in ("已上市", "未融资"):
+        six_mo.append(f"融资阶段 — 公司处于 {cp.funding_stage}，6 个月时主动问 leader / 财务 现金跑道（runway），避免下一轮融资出问题被波及。")
+    six_mo.append("如果以上任何一项信号恶化（高强度加班固化 / 同事扎堆离职 / 工资延迟）—— 立刻开始看外部机会，不要等。")
+
+    # De-dup while preserving order
+    def _dedup(items: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for it in items:
+            key = it[:30]
+            if key not in seen:
+                seen.add(key)
+                out.append(it)
+        return out
+
+    return {
+        "1mo": _dedup(one_mo)[:5],
+        "3mo": _dedup(three_mo)[:5],
+        "6mo": _dedup(six_mo)[:5],
+    }
+
+
 def compute_chapter_stories(data: ReportData) -> tuple[dict[str, str], dict[str, list[str]], str]:
     """Generate per-chapter 「编辑手记」 aside + 「数据故事」 lines.
 
@@ -438,6 +506,9 @@ def build_report(data: ReportData) -> str:
     else:
         edit_notes, data_stories, industry_key = compute_chapter_stories(data)
 
+    # v0.1.15 — 试用期观察清单 (1mo / 3mo / 6mo)
+    trial_checklist = data.trial_checklist or compute_trial_checklist(data)
+
     tmpl = _ENV.get_template("report.html.j2")
     return tmpl.render(
         data=data,
@@ -464,5 +535,7 @@ def build_report(data: ReportData) -> str:
         edit_notes=edit_notes,
         data_stories=data_stories,
         industry_key=industry_key,
+        trial_checklist=trial_checklist,
+        peer_comparison=data.peer_comparison,
         favicon_url=_favicon_url,
     )

@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 265 tests
+pytest                        # 286 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.14）
+## 已知限制（v0.1.15）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -97,6 +97,7 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.12 报告「去 AI 味」**：CSS 加 motion 系统（reveal-on-scroll / paper-grain texture / tier-badge hover lift / bullet hover highlight / `.pullquote` 编辑型强调 / focus-visible 描边 / KPI 数字滚动完成时 scale 弹一下）；template `</body>` 前加 inline JS（IntersectionObserver + easeOutCubic counter ticker + prefers-reduced-motion guard）。零外部依赖、单文件可移植性保持
 - **v0.1.13 报告「编辑手记 + 数据故事 + 拖拽章节」**：每个章节旁加 `.story-block`（编辑手记 aside + 行业对比数据故事），如「过去 12 个月里，这家公司被起诉了 X 次 — 比同行平均高 Y%」；行业基线在 `src/jobhunter/report/industry_baselines.py`（12 个行业 + default fallback）；7 个主章节可拖拽重排（HTML5 native DnD + localStorage 持久化 + 「重置章节顺序」按钮）；仍是零外部依赖
 - **v0.1.14 报告密度提升**：reviews 域信号太稀 → 两轮 LLM 抽取（首轮薄时再补一轮聚焦 missing types）+ 纯本地关键词兜底（996 / 内卷 / PUA / 月薪 → 最小信号）；司法章「零诉讼」改为「公开记录中未发现诉讼或被执行 — 同行里相对少见的干净背景」正面叙事；公司画像域新增 huxiu.com / lieyunwang.com / chuangsanjia.com + `site:36kr.com` / `site:huxiu.com` 双锚点 query；面试反问改事实驱动：自动从司法样本 / 薪酬跨度 / 加班密度 / 经营异常 / 融资阶段 派生针对性问题，前置插入清单
+- **v0.1.15 报告「面试流程 + 试用期清单 + 同行业对比」三件套**：(1) ReviewFacts 加 `interview_rounds` / `interview_style` / `interview_difficulty` / `interview_signals`，LLM prompt 要求抽取（轮数 / 题型标签 / 难度），模板新章「面试流程」展示；(2) `compute_trial_checklist()` 派生 1mo / 3mo / 6mo 试用期观察清单（HR 反向背调框架 + 数据驱动 5 条），事实驱动：high_overtime → 1 月观察；anomaly_listed → 3 月复核；case_count > 0 → 6 月确认；融资阶段非上市 → 6 月问 runway；(3) `--compare "美团,京东"` CLI flag 触发跨公司对比，每多 1 家 ≈ 1 次轻量级 pipeline（仅 extract + scoring，跳过 alias/slang/consolidation/interview Qs，Tavily 24h cache 让重复免费），渲染同行业对比表（综合分 / 5 轴 / 典型月薪 / 司法数 / 舆情）
 - 不支持：批量多公司、SQLite watchlist、Web 服务、PDF 导出、Playwright（v0.2 候选）
 
 ## 下次接手可考虑的深度改动

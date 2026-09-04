@@ -321,6 +321,19 @@ class JDGapSignal(BaseModel):
     url: HttpUrl | None = None
 
 
+class InterviewSignal(BaseModel):
+    """v0.1.15 — Interview-process fact extracted from review UGC.
+
+    Captures one observation about how this company runs interviews
+    (round count, question types, difficulty), with evidence + url so the
+    reader can sanity-check against the original post.
+    """
+    aspect: Literal["rounds", "style", "difficulty", "process", "feedback"] = "process"
+    observation: str = ""  # e.g. "3 轮技术面 + 1 轮 HR"
+    evidence: str = ""
+    url: HttpUrl | None = None
+
+
 class SlangEntry(BaseModel):
     """A workplace / internet slang term surfaced in UGC reviews,
     with a plain-Chinese gloss so report readers can parse it."""
@@ -363,6 +376,13 @@ class ReviewFacts(NullTolerantListBase):
     jd_gap_signals: list[JDGapSignal] = Field(default_factory=list)
     slang_glossary: list[SlangEntry] = Field(default_factory=list)
     source_urls: list[HttpUrl] = Field(default_factory=list)
+    # v0.1.15 — Interview-process snapshot (typical rounds / style / difficulty).
+    # Driven by InterviewSignal.aspect so the LLM can capture heterogeneous
+    # observations (some posts mention rounds, others mention question style).
+    interview_rounds: int | None = None
+    interview_style: list[str] = Field(default_factory=list)
+    interview_difficulty: Literal["easy", "medium", "hard", "未知"] | None = None
+    interview_signals: list[InterviewSignal] = Field(default_factory=list)
 
 
 # ---------- News ----------
