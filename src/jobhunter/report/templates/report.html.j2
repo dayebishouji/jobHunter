@@ -159,6 +159,25 @@
       </div>
     {% endif %}
 
+    {# v0.1.17 — vs 上次 (snapshot diff). Renders only when a prior run exists in cache. #}
+    {% if snapshot_diff %}
+      <div class="hero-snapshot-diff" aria-label="数据变化 vs 上次">
+        <div class="hero-snapshot-head">
+          <span class="hero-snapshot-label">vs 上次 ({{ snapshot_diff.days_ago }} 天前)</span>
+        </div>
+        <ul class="hero-snapshot-lines">
+          {% for ln in snapshot_diff.lines %}
+            <li class="snap-line snap-{{ ln.tone }}">
+              <span class="snap-icon">{{ ln.icon }}</span>
+              <span class="snap-label">{{ ln.label }}</span>
+              <span class="snap-arrow">{{ ln.before }} → {{ ln.after }}</span>
+              {% if ln.delta %}<span class="snap-delta">({{ ln.delta }})</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
     {% if data.axes %}
     <div class="hero-radar">
       <div class="hero-ring-label">风险断面</div>
@@ -523,6 +542,32 @@
       <div class="bar-v-label">{{ b.label }}K</div>
     </div>
     {% endfor %}
+  </div>
+  {% endif %}
+
+  {# v0.1.17 — 薪酬分位带（P25 / P50 / P75）#}
+  {% if salary_band %}
+  <div class="salary-band" aria-label="薪酬分位带">
+    <div class="salary-band-head">
+      <span class="salary-band-title">薪酬分位带</span>
+      <span class="salary-band-dek">基于 {{ salary_band.n }} 条爆料</span>
+    </div>
+    <div class="salary-band-bar">
+      <span class="salary-band-min">{{ '%.0f'|format(salary_band.min) }}K</span>
+      <div class="salary-band-track">
+        <span class="salary-band-fill" style="left:{% if salary_band.max > salary_band.min %}{{ ((salary_band.p25 - salary_band.min) / (salary_band.max - salary_band.min) * 100)|int }}{% else %}0{% endif %}%; width:{% if salary_band.max > salary_band.min %}{{ ((salary_band.p75 - salary_band.p25) / (salary_band.max - salary_band.min) * 100)|int }}{% else %}0{% endif %}%;"></span>
+        <span class="salary-band-p50" style="left:{% if salary_band.max > salary_band.min %}{{ ((salary_band.p50 - salary_band.min) / (salary_band.max - salary_band.min) * 100)|int }}{% else %}0{% endif %}%;">{{ '%.0f'|format(salary_band.p50) }}K 中位</span>
+      </div>
+      <span class="salary-band-max">{{ '%.0f'|format(salary_band.max) }}K</span>
+    </div>
+    <div class="salary-band-foot">
+      <span><strong>P25</strong> {{ '%.0f'|format(salary_band.p25) }}K</span>
+      <span class="muted">·</span>
+      <span><strong>P50</strong> {{ '%.0f'|format(salary_band.p50) }}K</span>
+      <span class="muted">·</span>
+      <span><strong>P75</strong> {{ '%.0f'|format(salary_band.p75) }}K</span>
+      <span class="muted" style="margin-left: 12px;">谈薪时建议落点：中位偏上 10-15%</span>
+    </div>
   </div>
   {% endif %}
   {% endif %}
@@ -1185,6 +1230,26 @@
       });
     }
   }
+})();
+</script>
+
+{# === v0.1.17 — Print / PDF auto-trigger ===
+   When the URL contains ?print=1, wait for layout to settle then call
+   window.print(). User sees the browser print dialog (Chrome / Edge / Firefox
+   all support "Save as PDF" as a destination). Zero deps. #}
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('print') === '1') {
+      // Give IntersectionObservers a beat to settle, then trigger.
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          try { window.print(); } catch (e) {}
+        }, 600);
+      });
+    }
+  } catch (e) {}
 })();
 </script>
 </body>

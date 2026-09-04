@@ -91,3 +91,7 @@ class ReportData(BaseModel):
     # .model_dump() round-trips cleanly.
     jd_alignment: list[dict] = Field(default_factory=list)  # JdClaim.__dict__ list
     overall_verdict: dict | None = None  # OverallVerdict.__dict__
+
+    # v0.1.17 — vs 上次 (snapshot diff from prior runs in cache). Computed lazily
+    # by builder from the on-disk snapshot store.
+    snapshot_diff: dict | None = None

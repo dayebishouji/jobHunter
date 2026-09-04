@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 312 tests
+pytest                        # 339 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.16）
+## 已知限制（v0.1.17）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -99,7 +99,8 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.14 报告密度提升**：reviews 域信号太稀 → 两轮 LLM 抽取（首轮薄时再补一轮聚焦 missing types）+ 纯本地关键词兜底（996 / 内卷 / PUA / 月薪 → 最小信号）；司法章「零诉讼」改为「公开记录中未发现诉讼或被执行 — 同行里相对少见的干净背景」正面叙事；公司画像域新增 huxiu.com / lieyunwang.com / chuangsanjia.com + `site:36kr.com` / `site:huxiu.com` 双锚点 query；面试反问改事实驱动：自动从司法样本 / 薪酬跨度 / 加班密度 / 经营异常 / 融资阶段 派生针对性问题，前置插入清单
 - **v0.1.15 报告「面试流程 + 试用期清单 + 同行业对比」三件套**：(1) ReviewFacts 加 `interview_rounds` / `interview_style` / `interview_difficulty` / `interview_signals`，LLM prompt 要求抽取（轮数 / 题型标签 / 难度），模板新章「面试流程」展示；(2) `compute_trial_checklist()` 派生 1mo / 3mo / 6mo 试用期观察清单（HR 反向背调框架 + 数据驱动 5 条），事实驱动：high_overtime → 1 月观察；anomaly_listed → 3 月复核；case_count > 0 → 6 月确认；融资阶段非上市 → 6 月问 runway；(3) `--compare "美团,京东"` CLI flag 触发跨公司对比，每多 1 家 ≈ 1 次轻量级 pipeline（仅 extract + scoring，跳过 alias/slang/consolidation/interview Qs，Tavily 24h cache 让重复免费），渲染同行业对比表（综合分 / 5 轴 / 典型月薪 / 司法数 / 舆情）
 - **v0.1.16 报告「信号新鲜度 + JD 对照 + 顶层判断」三件套**：(1) 每条 review signal 加 `published_at`（LLM 抽不到 → null；`_loose_keyword_reviews` 用今日），模板渲染「X 月前」badge，超过 1 年的信号自动淡化（line-through + 0.5 opacity）；(2) `--jd TEXT` / `--jd-file PATH` CLI 触发，`compute_jd_alignment()` 纯本地判定 6 类常见承诺（弹性 / 15 薪 / 五险一金 / 扁平 / 期权 / 福利）vs 公开事实 — confirmed (绿) / contradicted (红) / unverified (灰)，零 LLM 调用；`(3) `compute_overall_verdict()` 派生顶层 verdict（recommend / caution / avoid / neutral）渲染在 hero side（绿/黄/红/灰 badge + headline + top 3 reasons）。判定规则（deterministic）：avoid = 2+ 轴 ≤2 OR 司法 >10 + 异常；caution = 任一轴 ≤3 OR 司法 >3 OR 重度加班 ≥2 OR 异常；recommend = 全轴 ≥4 AND 司法 0 AND 无重度加班 AND 正面 ≥ 负面
-- 不支持：批量多公司、SQLite watchlist、Web 服务、PDF 导出、Playwright（v0.2 候选）
+- **v0.1.17 报告「薪酬 band + JD 细粒度 + 历史快照 + watchlist + 打印/PDF」五件套**：(1) `compute_salary_band()` 派生 P25 / P50 / P75（线性插值），模板 `.salary-band` 渲染横条 + 中位标；(2) `jd_alignment` 新增 7 条细粒度（远程 / 双休 / 出差 / 团建 / 培训 / 晋升 / 弹性时间），总 15 类承诺可核对；(3) `report/snapshot.py` 把每次 run 的关键指标（verdict / 司法数 / 薪酬 P50 / 异常 / 氛围）写入 platformdirs cache，下次同公司 run 自动渲染「vs 上次 (X 天前)」差异行，verdict 升降用 ↑ / ↓ 标注；(4) `watchlist` 子命令（`add` / `list` / `remove`）持久化到 cache 目录 JSON；CLI 主流程跑完后自动 mark_ran；(5) `--print` CLI flag 触发 `?print=1` URL，inline JS 调 `window.print()` 让用户在浏览器原生对话框「Save as PDF」；CSS `@media print` 关闭动画 / 隐藏拖拽把手 / 强制单色背景
+- 不支持：批量多公司（watch 已有 CRUD，批跑未做）、Web 服务、Playwright
 
 ## 下次接手可考虑的深度改动
 

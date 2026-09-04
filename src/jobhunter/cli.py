@@ -23,6 +23,7 @@ from jobhunter import __version__
 from jobhunter.config import load_settings
 from jobhunter.models.query import CompanyQuery
 from jobhunter.pipeline import ReportArtifacts, run
+from jobhunter import watchlist
 
 
 def _force_utf8_stdio() -> None:
@@ -188,6 +189,7 @@ async def _interactive_flow() -> None:
 @click.option("--compare", default="", help="同行业对比公司（逗号分隔，如「美团,京东」）；每多 1 家 ≈ 多 1 次轻量级 pipeline")
 @click.option("--jd", "jd_text", default=None, help="JD 文本（可选）。提供后报告会自动与公司真实数据交叉验证")
 @click.option("--jd-file", "jd_file", default=None, type=click.Path(exists=True, path_type=Path), help="JD 文件路径（与 --jd 二选一）")
+@click.option("--print", "print_pdf", is_flag=True, default=False, help="生成后自动打开浏览器并触发打印对话框（用户可保存为 PDF / 实际打印）")
 def run_cmd(
     company: str,
     position: str,
@@ -199,6 +201,7 @@ def run_cmd(
     compare: str,
     jd_text: str | None,
     jd_file: Path | None,
+    print_pdf: bool,
 ) -> None:
     """非交互模式（脚本友好）。"""
     _setup_logging()
@@ -249,14 +252,78 @@ def run_cmd(
     console.print(f"[green]✓[/green] {artifacts.path}")
     if q.aliases:
         console.print(f"  reviews 域额外搜索别名：{', '.join(q.aliases)}")
-    if not no_open:
+    if not no_open or print_pdf:
         from jobhunter.utils.browser import open_in_browser
         open_in_browser(artifacts.path)
+
+    if print_pdf:
+        # v0.1.17 — append ?print=1 to URL; the inline JS picks it up and calls
+        # window.print() once the page is ready. User then Ctrl+Enter or clicks
+        # "Save as PDF" in the resulting dialog. Zero external deps.
+        try:
+            import webbrowser
+            webbrowser.open(artifacts.path.as_uri() + "?print=1", new=2)
+        except Exception as e:  # noqa: BLE001
+            err_console.print(f"[yellow]?print=1 触发失败：[/yellow]{e}")
+
+    # v0.1.17 — touch watchlist entry if present (best-effort).
+    try:
+        watchlist.mark_ran(q.company)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # Subcommand alias: both `jobhunter run` and `jobhunter check` work
 main.add_command(run_cmd, name="run")
 main.add_command(run_cmd, name="check")
+
+
+# ---------- v0.1.17 — watchlist subcommands ----------
+
+@watch_group.command(name="add")
+@click.option("--company", "-c", required=True, help="公司名")
+@click.option("--position", "-p", default="", help="岗位")
+@click.option("--city", "-y", default="", help="城市")
+def watch_add(company: str, position: str, city: str) -> None:
+    """把公司加入 watchlist（持久化在 user cache 目录）。"""
+    try:
+        entry = watchlist.add(company, position, city)
+    except ValueError as e:
+        err_console.print(f"[red]{e}[/red]")
+        raise click.exceptions.Exit(code=2)
+    console.print(f"[green]✓[/green] 已加入 watchlist：{entry.display()}")
+    console.print(f"  列表文件：{watchlist.path_for_display()}")
+
+
+@watch_group.command(name="list")
+def watch_list() -> None:
+    """列出 watchlist 中所有公司。"""
+    entries = watchlist.list_entries()
+    if not entries:
+        console.print("[yellow]watchlist 为空[/yellow] — `jobhunter watch add -c <公司名>` 加入第一项")
+        return
+    console.print(f"[bold]{len(entries)} 家公司：[/bold]")
+    for e in entries:
+        last = f" · 上次跑：{e.last_run_at[:10]}" if e.last_run_at else " · 未跑过"
+        console.print(f"  • {e.display()}{last}")
+
+
+@watch_group.command(name="remove")
+@click.option("--company", "-c", required=True, help="公司名（精确匹配）")
+def watch_remove(company: str) -> None:
+    """从 watchlist 中移除公司。"""
+    if watchlist.remove(company):
+        console.print(f"[green]✓[/green] 已移除 {company}")
+    else:
+        console.print(f"[yellow]{company} 不在 watchlist 中[/yellow]")
+
+
+@click.group()
+def watch_group() -> None:
+    """管理 watchlist（持久化的关注公司列表）。"""
+
+
+main.add_command(watch_group)
 
 
 if __name__ == "__main__":

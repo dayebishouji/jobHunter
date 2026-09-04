@@ -210,6 +210,13 @@ async def run(
     out_path = out_dir / f"{slug}.html"
     out_path.write_text(html, encoding="utf-8")
 
+    # v0.1.17 — persist a compact snapshot for future diff. Best-effort.
+    try:
+        from jobhunter.report.snapshot import save_snapshot
+        save_snapshot(data)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("snapshot save failed: %s", e)
+
     if open_browser:
         try:
             from jobhunter.utils.browser import open_in_browser

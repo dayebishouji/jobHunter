@@ -172,6 +172,46 @@ _CONFIDENCE_LABEL = {
 }
 
 
+# ---------- v0.1.17 — Salary band (P25 / P50 / P75) ----------
+
+def compute_salary_band(salary_signals) -> dict | None:
+    """Aggregate salary signals into a percentile band for the offer-comparison
+    use case. Returns None when fewer than 2 datapoints exist (insufficient to
+    even hint a band).
+
+    Method:
+      - Each signal contributes 1 datapoint: midpoint of range, or base_monthly_k
+      - Linear-interpolation percentile (numpy-style `linear` method)
+    """
+    values: list[float] = []
+    for s in salary_signals or []:
+        if s.salary_range_min_k is not None and s.salary_range_max_k is not None:
+            values.append((s.salary_range_min_k + s.salary_range_max_k) / 2)
+        elif s.base_monthly_k is not None:
+            values.append(float(s.base_monthly_k))
+    if len(values) < 2:
+        return None
+    values.sort()
+    n = len(values)
+
+    def _pct(p: float) -> float:
+        k = (n - 1) * p
+        f = int(k)
+        c = min(f + 1, n - 1)
+        if f == c:
+            return values[f]
+        return values[f] + (values[c] - values[f]) * (k - f)
+
+    return {
+        "p25": round(_pct(0.25), 1),
+        "p50": round(_pct(0.50), 1),
+        "p75": round(_pct(0.75), 1),
+        "n": n,
+        "min": values[0],
+        "max": values[-1],
+    }
+
+
 def compute_diversity_kpi(review_facts, sources) -> dict:
     """Source-diversity KPI for the hero meta line.
 
@@ -597,6 +637,7 @@ def build_report(data: ReportData) -> str:
     hero_ring = score_ring_svg(avg_score) if avg_score else ""
     overtime_dist = overtime_distribution(data.review_facts.overtime_signals) if data.review_facts else []
     salary_dist = salary_distribution(data.review_facts.salary_signals) if data.review_facts else []
+    salary_band = compute_salary_band(data.review_facts.salary_signals) if data.review_facts else None
 
     # New editorial primitives
     vibe_counts = vibe_sentiment_counts(data.review_facts.vibe_signals) if data.review_facts else []
@@ -644,6 +685,16 @@ def build_report(data: ReportData) -> str:
     # v0.1.16 — 顶层 verdict
     overall_verdict = data.overall_verdict or compute_overall_verdict(data)
 
+    # v0.1.17 — vs 上次 (snapshot diff from cache). None when no prior run.
+    snapshot_diff = data.snapshot_diff
+    if snapshot_diff is None:
+        try:
+            from jobhunter.report.snapshot import diff_snapshots, latest_snapshot
+            prev = latest_snapshot(data.query.company)
+            snapshot_diff = diff_snapshots(prev, data) if prev else None
+        except Exception:  # noqa: BLE001
+            snapshot_diff = None
+
     tmpl = _ENV.get_template("report.html.j2")
     return tmpl.render(
         data=data,
@@ -655,6 +706,7 @@ def build_report(data: ReportData) -> str:
         hero_ring_svg=hero_ring,
         overtime_dist=overtime_dist,
         salary_dist=salary_dist,
+        salary_band=salary_band,
         vibe_counts=vibe_counts,
         vibe_donut_svg=vibe_donut,
         shareholder_donut_svg=shareholder_donut,
@@ -674,5 +726,6 @@ def build_report(data: ReportData) -> str:
         peer_comparison=data.peer_comparison,
         jd_alignment=jd_alignment,
         overall_verdict=overall_verdict,
+        snapshot_diff=snapshot_diff,
         favicon_url=_favicon_url,
     )

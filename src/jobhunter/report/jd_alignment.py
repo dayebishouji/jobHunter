@@ -79,6 +79,42 @@ _RULES: list[tuple[str, list[re.Pattern[str]], str]] = [
         [re.compile(r"团队年轻|90\s*后|95\s*后|有活力|氛围好")],
         "young_team",
     ),
+    # v0.1.17 — additional fine-grained rules.
+    (
+        "远程办公 / 居家",
+        [re.compile(r"远程.{0,4}办公|远程.{0,4}工作|居家.{0,4}办公|home.?office|remote")],
+        "remote_work",
+    ),
+    (
+        "双休",
+        [re.compile(r"双休|周末双休|周末不加班|双休.{0,4}保障|5天.{0,4}8小时|work.{0,4}days.{0,4}5")],
+        "two_day_weekend",
+    ),
+    (
+        "出差强度",
+        [re.compile(r"偶尔.{0,4}出差|经常.{0,4}出差|高频.{0,4}出差|出差.{0,4}多|差旅")],
+        "business_travel",
+    ),
+    (
+        "团建 / 活动",
+        [re.compile(r"团建|team.?building|定期.{0,4}团建|年会|outing")],
+        "team_building",
+    ),
+    (
+        "培训 / 学习预算",
+        [re.compile(r"培训.{0,4}(预算|机会)|学习.{0,4}补贴|技术.{0,4}分享|book.{0,4}budget|conference.{0,4}budget|技术.{0,4}大会")],
+        "training",
+    ),
+    (
+        "晋升通道",
+        [re.compile(r"晋升.{0,4}通道|晋升.{0,4}机制|M\s*-\s*P\s*-?\s*T|双.{0,4}通道|职级.{0,4}体系")],
+        "promotion",
+    ),
+    (
+        "弹性时间",
+        [re.compile(r"弹性.{0,4}时间|弹性.{0,4}上下班|flextime|不打卡|弹性.{0,4}工时")],
+        "flex_hours",
+    ),
 ]
 
 
@@ -166,6 +202,71 @@ def _eval_young_team(rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
     return ("confirmed" if pos >= 2 else "unverified"), f"正面氛围信号 {pos} 条"
 
 
+def _eval_remote_work(rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
+    """Claim: 远程办公. Contradicted if reviews explicitly say '坐班' or '必须到岗'."""
+    if not rf:
+        return "unverified", "暂无评价数据"
+    pos_kw = any("远程" in (s.evidence or "") or "居家" in (s.evidence or "") for s in rf_evidence_iter(rf))
+    neg_re = re.compile(r"坐班|必须到岗|强制.{0,4}到岗")
+    neg_kw = any(neg_re.search(s.evidence or "") for s in rf_evidence_iter(rf))
+    if neg_kw:
+        return "contradicted", "评价中提到「必须到岗 / 强制坐班」"
+    if pos_kw:
+        return "confirmed", "评价中提到「远程 / 居家办公」"
+    return "unverified", "评价里未明确提及工作地点灵活度"
+
+
+def _eval_two_day_weekend(rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
+    """Claim: 双休. Contradicted when '大小周' or '996' shows up."""
+    if not rf:
+        return "unverified", "暂无评价数据"
+    bad = [o for o in rf.overtime_signals if o.pattern in ("大小周", "996", "995")]
+    if bad:
+        return "contradicted", f"已有 {len(bad)} 条 996 / 大小周 爆料，与「双休」冲突"
+    return "unverified", "评价未直接确认是否双休；可在面试时核对"
+
+
+def _eval_business_travel(rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
+    """Claim: 出差强度. Vague — default unverified unless reviews mention."""
+    return "unverified", "出差强度通常不写在公开评价中，建议面试时询问出差占比"
+
+
+def _eval_team_building(rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
+    """Claim: 团建. Contradicted when reviews say '强制团建' / '团建加班'."""
+    if not rf:
+        return "unverified", "暂无评价数据"
+    neg_re = re.compile(r"团建加班|强制团建|团建.{0,4}周末|团建.{0,4}加班")
+    neg = any(neg_re.search(s.evidence or "") for s in rf_evidence_iter(rf))
+    if neg:
+        return "contradicted", "评价中提到「团建 = 变相加班」"
+    return "unverified", "团建细节很少被评论提及"
+
+
+def _eval_training(_rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
+    """Claim: 培训 / 学习预算. Generally unverified from public sources."""
+    return "unverified", "培训预算通常不公开；可问 HR 「是否有 conference 报销 / book budget」"
+
+
+def _eval_promotion(rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
+    """Claim: 晋升通道. Contradicted by '晋升难' / 长期不涨薪 sentiment."""
+    if not rf:
+        return "unverified", "暂无评价数据"
+    bad = sum(1 for v in rf.vibe_signals if v.sentiment == "negative" and ("晋升" in (v.evidence or "") or "涨薪" in (v.evidence or "")))
+    if bad >= 1:
+        return "contradicted", f"评价中提到晋升 / 涨薪困难 ({bad} 条)"
+    return "unverified", "晋升机制通常不写在公开评价中"
+
+
+def _eval_flex_hours(rf: ReviewFacts | None) -> tuple[ClaimStatus, str]:
+    """Claim: 弹性时间. Overlaps with 弹性工作 but specifically about clock-in."""
+    if not rf:
+        return "unverified", "暂无评价数据"
+    bad = sum(1 for o in rf.overtime_signals if o.pattern in ("996", "大小周"))
+    if bad >= 2:
+        return "contradicted", f"已有 {bad} 条高强度加班信号，弹性时间难落实"
+    return "unverified", "弹性时间 vs 996 矛盾本身已是线索，建议面试时确认"
+
+
 _EVALUATORS = {
     "overtime_flex": lambda rf, bf, cp: _eval_overtime_flex(rf),
     "salary_total_months": lambda rf, bf, cp: _eval_salary_total_months(rf),
@@ -175,6 +276,13 @@ _EVALUATORS = {
     "perks": lambda rf, bf, cp: _eval_perks(rf),
     "tech_driven": lambda rf, bf, cp: _eval_tech_driven(rf),
     "young_team": lambda rf, bf, cp: _eval_young_team(rf),
+    "remote_work": lambda rf, bf, cp: _eval_remote_work(rf),
+    "two_day_weekend": lambda rf, bf, cp: _eval_two_day_weekend(rf),
+    "business_travel": lambda rf, bf, cp: _eval_business_travel(rf),
+    "team_building": lambda rf, bf, cp: _eval_team_building(rf),
+    "training": lambda rf, bf, cp: _eval_training(rf),
+    "promotion": lambda rf, bf, cp: _eval_promotion(rf),
+    "flex_hours": lambda rf, bf, cp: _eval_flex_hours(rf),
 }
 
 

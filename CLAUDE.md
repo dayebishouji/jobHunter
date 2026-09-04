@@ -11,7 +11,7 @@
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
 scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
-.venv/Scripts/python.exe -m pytest                       # 312 tests
+.venv/Scripts/python.exe -m pytest                       # 339 tests
 ```
 
 `.env` 在 `e:\project\jobHunter\.env`（`ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` 可选走 ccswitch 中转 + `TAVILY_API_KEY`）。
@@ -33,7 +33,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.1.16）
+## 当前边界（v0.1.17）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
 - ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
@@ -64,6 +64,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - v0.1.14 起报告密度提升：reviews 域信号太稀（实跑经常 salary/vibe 0 条）→ (1) `extract_all_domains` 跑两轮：首轮薄时（<3 total 或 ≤2 types 非零）追加一轮聚焦 missing types 的 LLM 调用；(2) `_loose_keyword_reviews()` 本地关键词兜底（996/995/大小周/内卷/PUA/月薪…），纯确定性、零 LLM 调用；(3) `_merge_reviews()` 按 url dedup 两轮结果。司法章「零诉讼」改为「公开记录中未发现诉讼或被执行 — 同行里相对少见的干净背景」正面叙事（`report.html.j2` ch-judicial 三分支：no data / zero / nonzero）。COMPANY_INFO_DOMAINS 加 huxiu.com / lieyunwang.com / chuangsanjia.com，query 加 `site:36kr.com` / `site:huxiu.com`。`_fact_driven_interview_questions()` 派生 5 条针对性问题（司法样本 / 薪酬跨度 >8K / heavy_overtime ≥2 / anomaly_listed / 非上市融资阶段），与 LLM 产出去重合并、前置插入；LLM 失败降级到纯事实驱动。测试 +29 (`tests/test_v014_features.py`)，全 265 pass
 - v0.1.15 起报告加「面试流程 + 试用期清单 + 同行业对比」三件套：(1) ReviewFacts 加 `interview_rounds` / `interview_style` / `interview_difficulty` / `interview_signals`，prompt 强制 LLM 抽取典型轮数/题型标签/难度，新章 `ch-interview-process` 展示；(2) `compute_trial_checklist()` 派生 1mo/3mo/6mo 试用期观察清单（HR 反向背调框架 + 数据驱动 ≤5 条/时点），事实驱动触发：heavy_overtime ≥2 → 1mo 加班强度；anomaly_listed → 3mo 经营异常；case_count > 0 → 6mo 司法核查；funding_stage 非「已上市」→ 6mo 询问 runway；(3) `--compare "美团,京东"` CLI flag 触发跨公司对比，pipeline 新增 `_build_peer_summary()` 轻量级 runner（仅 extract+scoring，跳过 alias/slang/round-2/consolidation/interview Qs），`run_peer_comparison()` 用 `asyncio.Semaphore(2)` 限流，Tavily 24h cache 让重复 0 成本；模板新章 `ch-peers` 渲染同行业对比表（综合分/5 轴/典型月薪/司法数/舆情），目标公司 highlight 在首行；测试 +21 (`tests/test_v015_features.py`)，全 286 pass
 - v0.1.16 起报告加「信号新鲜度 + JD 对照 + 顶层判断」三件套（决策闭环最后一公里）：(1) 4 个 review signal model（Salary/Overtime/Turnover/Vibe）加 `published_at: date | None` + `_coerce_signal_date` 校验器（ISO 字符串 / 中文日期 / datetime / 未知 → date | None），EXTRACT_REVIEWS_SUFFIX 要求 LLM 抽每条 signal 的 published_at；`_loose_keyword_reviews()` 优先用 RawItem.published_at、否则 date.today()；模板 `signal_age_badge(s)` macro 渲染「X 天前 / X 月前 / X 年前」，超 1 年 line-through + 0.5 opacity；(2) `report/jd_alignment.py` 纯本地判定 6 类 JD 常见承诺（弹性 / 15 薪 / 五险一金 / 扁平 / 期权 / 福利 / 技术驱动）vs 公开事实 → confirmed/contradicted/unverified；CompanyQuery 加 `jd_text`，CLI `--jd TEXT` / `--jd-file PATH`（二选一，互斥校验），模板新章 `jd-alignment` 渲染「JD 对照清单」；(3) `compute_overall_verdict()` 派生顶层 verdict（recommend/caution/avoid/neutral），判定：avoid = 2+ 轴 ≤2 OR 司法>10；caution = 任一轴 ≤3 OR 司法>3 OR 重度加班≥2 OR 异常；recommend = 全轴≥4 AND 司法0 AND 无重度加班 AND 正面≥负面；其余 neutral；模板 hero-side 加 `.hero-verdict` badge（绿/黄/红/灰）+ headline + top 3 reasons；测试 +26 (`tests/test_v016_features.py`)，全 312 pass
+- v0.1.17 起报告加「薪酬 band + JD 细粒度 + 历史快照 + watchlist + 打印/PDF」五件套：(1) `compute_salary_band()` 派生 P25/P50/P75（线性插值，需 ≥2 个 datapoint，range 取中位），模板 `.salary-band` 渲染迷你横条 + 中位标 + 谈薪建议「中位偏上 10-15%」；(2) `jd_alignment` 新增 7 条细粒度（远程 / 双休 / 出差 / 团建 / 培训 / 晋升 / 弹性时间），共 15 类承诺。修正：v0.1.16 部分 evaluator 把 regex 当字符串 substring 用（"团建.{0,4}周末" 应为 re.search），v0.1.17 改为 re.compile + search；(3) `report/snapshot.py` 把每次 run 的关键指标（verdict / overall_score / 5 axes / 司法数 / 异常 / 薪酬 P50 / 氛围 pos+neg / news_sentiment / funding_stage）写入 `platformdirs.user_cache_dir/jobhunter/snapshots/{slug}/{YYYYMMDD-HHMM}.json`；`latest_snapshot()` 读最近，`diff_snapshots()` 比较 prev ↔ current，输出 verdict 升降 / 司法 ±N / 薪酬 ±N.K / 异常翻转；build_report 自动加载，hero-side 渲染 `.hero-snapshot-diff`；(4) `watchlist.py` 持久化到 cache 目录 `watchlist.json`（version=1 schema），CLI 子命令 `jobhunter watch add/list/remove`，主流程跑完后自动 mark_ran；(5) `--print` CLI flag + 浏览器 URL 末尾 `?print=1`，inline JS 监听 load 后 600ms 调 `window.print()`，CSS `@media print` 关闭 animation / 隐藏 drag-handle / 强制白底。零外部依赖。测试 +27 (`tests/test_v017_features.py`)，全 339 pass
 - 用户的两个深度建议记入「下次接手」：**1.** 行业路由（不是岗位路由） — LLM 先判公司行业再选数据源；当前 `domains_for_position()` 是位置路由的妥协，**做全行业路由需要一次额外 LLM 调用**。**2.** 3 级证据等级（用户主张 / 多源重复出现 / 有公开证据证实） — 当前 `support_tier`（unverified / single-source / corroborated / multi-domain）已经在做类似分级，命名差异可对齐，详见 [src/jobhunter/report/builder.py:compute_signal_supports](src/jobhunter/report/builder.py)
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 

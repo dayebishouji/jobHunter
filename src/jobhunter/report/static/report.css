@@ -768,6 +768,80 @@ h1.display, h2.display {
 .jd-claim-text strong { font-weight: 600; }
 .jd-claim-reason { font-size: 12.5px; margin-top: 2px; }
 
+/* ---------- v0.1.17 — salary band (P25 / P50 / P75) ----------
+   A horizontal mini-band that gives the reader an at-a-glance salary range
+   with the median marked. Sits below the salary histogram. */
+.salary-band {
+  margin: 18px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--paper-deep);
+}
+.salary-band-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.salary-band-title { font-family: var(--font-serif, 'Cormorant Garamond', serif); font-size: 18px; font-weight: 600; }
+.salary-band-dek { color: var(--ink-soft); font-size: 12px; }
+.salary-band-bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+.salary-band-min, .salary-band-max { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; color: var(--ink-soft); }
+.salary-band-track {
+  position: relative;
+  height: 16px;
+  background: rgba(120, 120, 120, 0.08);
+  border-radius: 999px;
+}
+.salary-band-fill {
+  position: absolute; top: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--caramel, #b67c52), var(--risk-good, #388e3c));
+  opacity: 0.4; border-radius: 999px;
+}
+.salary-band-p50 {
+  position: absolute; top: -22px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  background: var(--paper);
+  padding: 1px 6px; border: 1px solid var(--ink);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.salary-band-foot {
+  display: flex; gap: 8px; align-items: baseline; margin-top: 12px;
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+}
+.salary-band-foot strong { font-weight: 700; color: var(--ink); }
+
+/* ---------- v0.1.17 — vs 上次 snapshot diff ---------- */
+.hero-snapshot-diff {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  background: rgba(120, 120, 120, 0.04);
+}
+.hero-snapshot-head { margin-bottom: 6px; }
+.hero-snapshot-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.hero-snapshot-lines { list-style: none; padding: 0; margin: 0; }
+.snap-line {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 12.5px; padding: 2px 0;
+}
+.snap-icon {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 700; font-size: 13px; min-width: 14px; text-align: center;
+}
+.snap-label { color: var(--ink-soft); min-width: 90px; }
+.snap-arrow { font-family: var(--font-mono, ui-monospace, monospace); flex: 1; }
+.snap-delta { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; }
+.snap-good .snap-icon { color: var(--risk-good); }
+.snap-bad  .snap-icon { color: var(--risk-bad); }
+.snap-neutral .snap-icon { color: var(--ink-soft); }
+
 /* ---------- Tables ---------- */
 
 table {
@@ -1670,4 +1744,41 @@ a:focus-visible, button:focus-visible, .tier-badge:focus-visible {
   font-weight: 500;
   letter-spacing: 0.5px;
   border: 1px solid var(--rule-soft);
+}
+
+/* ---------- v0.1.17 — Print / PDF (@media print) ----------
+   Triggered either via ?print=1 URL (which calls window.print() after settle)
+   or the user manually printing. Goal: keep all chapter content visible,
+   kill scroll-reveal animations, hide interactive-only chrome (drag handles,
+   reorder-reset button), force light backgrounds so the toner doesn't bleed. */
+@media print {
+  :root {
+    --paper: #ffffff;
+    --paper-deep: #f6f1e8;
+    --ink: #000000;
+    --ink-soft: #333333;
+    --rule: #cccccc;
+  }
+  body { background: white !important; color: black; }
+  /* Disable animation + reveal-on-scroll */
+  *, *::before, *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  /* Hide interactive chrome */
+  .drag-handle, .reorder-reset, .story-block-edit-note { display: none !important; }
+  /* Keep each chapter on its own page so the PDF stays readable */
+  .chapter { break-inside: avoid; page-break-inside: avoid; margin: 0 0 18px; }
+  .hero { break-after: avoid-page; }
+  /* Salary band + JD alignment should fit on one page */
+  .salary-band, .jd-alignment { break-inside: avoid; }
+  /* Tighter margins */
+  @page { margin: 14mm 12mm; }
+  /* Avoid orphaned links */
+  a[href]::after { content: ""; }
+  /* Tier badges stay visible */
+  .tier-badge, .signal-age, .conf-badge { border: 1px solid currentColor !important; }
 }
