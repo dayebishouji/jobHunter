@@ -452,6 +452,13 @@ class ReviewFacts(NullTolerantListBase):
     interview_difficulty: Literal["easy", "medium", "hard", "未知"] | None = None
     interview_signals: list[InterviewSignal] = Field(default_factory=list)
 
+    # v0.1.21 — UGC-extracted canonical answer for "what time does the team
+    # typically leave the office?". Free-text so we keep ambiguity (some teams
+    # are 弹性 9-6, some are rigid 10 PM) rather than coercing to an enum.
+    typical_off_time: str | None = None  # e.g. "约 10:00 PM" / "弹性 9-6" / "21 点左右"
+    typical_off_time_evidence: str = ""  # short quoted line, ≤30 字
+    typical_off_time_url: HttpUrl | None = None
+
 
 # ---------- News ----------
 
@@ -651,6 +658,14 @@ class CompanyProfile(NullTolerantListBase):
     products: list[str] = Field(default_factory=list)  # 主要产品 / 产品线
     industries: list[str] = Field(default_factory=list)  # 所属行业
     company_size: str | None = None  # e.g. "100-500人" / "5000-10000人"
+    # v0.1.21 — Actual employee count from 天眼查 / 招聘 / 官网. Distinct from
+    # `company_size` which is a band string ("100-500人") — `employee_count`
+    # is the precise integer when available, e.g. "1,200 人".
+    employee_count: int | None = None
+    # v0.1.21 — Social insurance participants (社保参保人数). Strongest public
+    # proxy for actual workforce — much higher signal than registered scale.
+    # Often missing for very small / private companies; null is fine.
+    insured_count: int | None = None
     founded_year: int | None = None
     funding_stage: str | None = None  # 天使 / A轮 / B轮 / C轮 / D轮及以上 / 已上市 / 未融资
     total_funding: str | None = None  # 累计融资额 e.g. "约 5 亿元"
@@ -678,6 +693,38 @@ class CompanyProfile(NullTolerantListBase):
             except (ValueError, TypeError):
                 return None
         return None
+
+    @field_validator("employee_count", "insured_count", mode="before")
+    @classmethod
+    def _coerce_count(cls, v):
+        """v0.1.21 — Coerce messy LLM strings into a plain int.
+
+        Accepts: 1200, "1200", "1,200", "约 1200 人", "1200余人", "1200+".
+        Returns None for unparseable strings ("未知", "未披露", "N/A").
+        """
+        if v is None or isinstance(v, bool):
+            return None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if not isinstance(v, str):
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        # Strip the noise Chinese LLMs add: 约/近/余/大概 + 人 suffix + ,
+        import re
+        s = re.sub(r"[,\s]", "", s)
+        s = re.sub(r"(约|近|大概|大约|余|超过|左右)", "", s)
+        s = re.sub(r"(人|名|位|余)$", "", s)
+        s = s.rstrip("+")
+        if not s or s in ("未知", "未披露", "N/A", "—", "-"):
+            return None
+        try:
+            return int(float(s))
+        except (ValueError, TypeError):
+            return None
 
     @field_validator("official_website", mode="before")
     @classmethod

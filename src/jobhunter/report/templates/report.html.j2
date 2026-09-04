@@ -284,6 +284,19 @@
       <div class="stat-val" style="font-size:18px;">{{ cp.company_size }}</div>
     </div>
     {% endif %}
+    {# v0.1.21 — exact employee count + 社保参保人数 (stronger signal than company_size) #}
+    {% if cp.employee_count %}
+    <div class="stat">
+      <div class="stat-key">员工数</div>
+      <div class="stat-val">{{ cp.employee_count|int }}<span class="unit">人</span></div>
+    </div>
+    {% endif %}
+    {% if cp.insured_count %}
+    <div class="stat">
+      <div class="stat-key">参保人数</div>
+      <div class="stat-val">{{ cp.insured_count|int }}<span class="unit">人</span></div>
+    </div>
+    {% endif %}
     {% if cp.funding_stage %}
     <div class="stat">
       <div class="stat-key">融资</div>
@@ -593,6 +606,18 @@
   {{ story_block('reviews') }}
 
   {% set r = data.review_facts %}
+  {# v0.1.21 — UGC-extracted 典型下班时间 (canonical answer, surface prominently) #}
+  {% if r and r.typical_off_time %}
+    <div class="chapter-takeaway" style="border-left:3px solid var(--accent);">
+      <div class="chapter-takeaway-tag">典型下班时间</div>
+      <div>
+        团队普遍 <strong>{{ r.typical_off_time }}</strong> 下班
+        {%- if r.typical_off_time_evidence %} · <span class="muted">「{{ r.typical_off_time_evidence }}」</span>{% endif %}
+        {%- if r.typical_off_time_url %} · <a href="{{ r.typical_off_time_url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+      </div>
+    </div>
+  {% endif %}
+
   {% if not r or not r.overtime_signals %}
     <p class="empty">暂无加班节奏信号。</p>
   {% else %}
