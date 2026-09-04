@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     retry_min_wait: float = Field(default=2.0, gt=0)
     retry_max_wait: float = Field(default=10.0, gt=0)
 
+    # v0.1.20 — Sogou WeChat collector (direct HTTP). Disable when the source
+    # IP is banned: set SOGOU_WEIXIN_ENABLED=false in .env.
+    sogou_weixin_enabled: bool = Field(default=True)
+    sogou_weixin_min_interval: float = Field(default=2.0, gt=0)
+    sogou_weixin_max_interval: float = Field(default=5.0, gt=0)
+
     output_dir: Path = Field(default=Path("reports"))
     cache_dir: Path = Field(default=Path(""))  # filled in __init__
 

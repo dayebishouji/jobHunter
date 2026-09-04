@@ -165,6 +165,31 @@ _TIER_LABEL = {
     "multi-domain":  ("跨域印证", "tier-multi"),
 }
 
+
+def extract_collector_notes(
+    results: "list | None",
+) -> dict[str, str]:
+    """v0.1.20 — Pull per-collector soft-fail markers from raw CollectorResults.
+
+    Returns a dict like ``{"sogou_weixin": "anti_bot_redirect"}`` only when a
+    collector errored. Used by the template to render targeted manual-check
+    banners on the relevant chapter.
+
+    The marker is the *first* token of ``CollectorResult.error`` — e.g.
+    ``"anti_bot_redirect"`` for Sogou WeChat anti-bot challenges, or the full
+    error string for unrecognized failures.
+    """
+    out: dict[str, str] = {}
+    if not results:
+        return out
+    for r in results:
+        if not getattr(r, "error", None):
+            continue
+        err = r.error.strip()
+        marker = err.split()[0] if err else ""
+        out[r.collector] = marker or err
+    return out
+
 _CONFIDENCE_LABEL = {
     "high":   ("数据充足",   "conf-high"),
     "medium": ("部分缺失",   "conf-medium"),

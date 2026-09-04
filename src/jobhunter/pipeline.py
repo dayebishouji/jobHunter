@@ -107,7 +107,7 @@ async def run(
             logger.warning("slang query generation failed: %s", e)
 
     async with make_client() as http:
-        collectors = build_all(settings, tavily=tavily, http=http)
+        collectors = build_all(settings, tavily=tavily, http=http, cache=cache)
         results = await asyncio.gather(*(c.safe_collect(query) for c in collectors))
 
     # ---------- Round 2: recursive sub-query via LLM-extracted internal entities ----------
@@ -136,7 +136,7 @@ async def run(
                     )
                     sub_query = query.model_copy(update={"aliases": fresh})
                     async with make_client() as http:
-                        sub_collectors = build_all(settings, tavily=tavily, http=http)
+                        sub_collectors = build_all(settings, tavily=tavily, http=http, cache=cache)
                         sub_results = await asyncio.gather(
                             *(c.safe_collect(sub_query) for c in sub_collectors)
                         )
@@ -178,6 +178,12 @@ async def run(
         llm, query, axes, findings
     )
 
+    # v0.1.20 — surface per-collector soft-fail markers (e.g. sogou_weixin
+    # anti_bot_redirect) so the report can render targeted "manual check"
+    # banners. Only collectors that errored carry a marker.
+    from jobhunter.report.builder import extract_collector_notes
+    collector_notes = extract_collector_notes(results)
+
     data = ReportData(
         query=query,
         generated_at=datetime.now(timezone.utc),
@@ -192,6 +198,7 @@ async def run(
         data_gaps=findings.data_gaps,
         overall_confidence=overall_confidence,
         chapter_confidence=chapter_confidence,
+        collector_notes=collector_notes,
     )
 
     # v0.1.15 — Cross-company comparison (opt-in via --compare flag).
@@ -270,7 +277,7 @@ async def _build_peer_summary(
     try:
         async with make_client() as http:
             from jobhunter.collectors.registry import build_all
-            collectors = build_all(settings, tavily=tavily, http=http)
+            collectors = build_all(settings, tavily=tavily, http=http, cache=cache)
             results = await asyncio.gather(*(c.safe_collect(query) for c in collectors))
         by_domain = _normalize(results)
 

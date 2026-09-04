@@ -498,6 +498,14 @@
   </header>
   {{ story_block('reviews') }}
 
+  {# v0.1.20 — Per-collector soft-fail banner (e.g. sogou_weixin anti-bot). #}
+  {% if data.collector_notes.get("sogou_weixin") == "anti_bot_redirect" %}
+    <div class="data-source-note">
+      <span class="data-source-note-tag">部分源未覆盖</span>
+      搜狗微信搜索被反爬拦截 — 部分公众号评测文章未纳入本次抓取。建议手动到 <a href="https://weixin.sogou.com/weixin?type=2&amp;query={{ data.query.company|urlencode }}&amp;ie=utf8" target="_blank" rel="noopener">weixin.sogou.com</a> 核查「{{ data.query.company }}」相关公众号文章。
+    </div>
+  {% endif %}
+
   {% set r = data.review_facts %}
   {% if not r or not r.salary_signals %}
     <p class="empty">暂无薪酬爆料。可在看准网 / 脉脉 / 牛客 / 一亩三分地 / 小红书 搜索 "{{ data.query.company }}"。</p>

@@ -95,3 +95,8 @@ class ReportData(BaseModel):
     # v0.1.17 — vs 上次 (snapshot diff from prior runs in cache). Computed lazily
     # by builder from the on-disk snapshot store.
     snapshot_diff: dict | None = None
+
+    # v0.1.20 — Per-collector error markers (e.g. {"sogou_weixin": "anti_bot_redirect"}).
+    # Populated by pipeline from CollectorResult.error. The template renders a
+    # soft-fail banner on the corresponding chapter when a marker is present.
+    collector_notes: dict[str, str] = Field(default_factory=dict)

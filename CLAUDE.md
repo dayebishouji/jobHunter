@@ -11,7 +11,7 @@
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
 scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
-.venv/Scripts/python.exe -m pytest                       # 339 tests
+.venv/Scripts/python.exe -m pytest                       # 363 tests
 ```
 
 `.env` 在 `e:\project\jobHunter\.env`（`ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` 可选走 ccswitch 中转 + `TAVILY_API_KEY`）。
@@ -33,7 +33,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.1.19）
+## 当前边界（v0.1.20）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
 - ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
@@ -68,6 +68,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - v0.1.17.1 修两个静默回归：(1) `cli.py` `@watch_group.command(...)` 装饰器在 `watch_group` 定义之前就执行（import 顺序），导致 `python -m jobhunter` 必崩 NameError；339 测试没抓到因为没有 test 真正 import cli.py。修：把 `@click.group() def watch_group` 上移到 `@watch_group.command` 之前。(2) `__init__.py` `__version__` 还停在 `0.1.4`，而 `pyproject.toml` 已 bump 到 `0.1.17` → `--version` 撒谎。修：把 `__init__.py` 同步到 `0.1.17`。新增 `tests/test_cli_smoke.py`（3 个回归测试）：端到端 import cli / 断言 watch 子命令齐 / `--version` 必须等于 `pyproject.toml` 的 version。339 → 342 pass
 - v0.1.18 修 reviews 域召回为 0 的 bug（棒谷科技报告薪酬/加班/氛围三章全空）：(A) reviews 采集器跑 2 轮 — pass-1 6 个 query 带 allowlist（cost-bounded），pass-2 仅在 pass-1 < 3 命中时触发，3 个高召回 query（`知乎` / `小红书` / `体验 评价`）**不带** allowlist（成本 ~3x/单 query），解决 Tavily 对小红书/知乎内文覆盖差被 allowlist 拒掉的问题；`_dedup_by_url()` 按 URL 去重，HttpUrl 先转 str 再 normalize 尾斜杠；(B) `_all_names()` 在 `q.aliases` 为空时启用本地启发式（中文 corporate 后缀 strip：棒谷科技 → 棒谷；CamelCase split：AlibabaGroup → Alibaba），LLM 别名生成失败时仍能多 query 1-2 个真实称呼；`review_pass2_queries()` 新函数产出 pass-2 query。`PASS2_TRIGGER_THRESHOLD = 3` 仅在 pass-1 失败时跑，cost OK。测试 +24 (`tests/test_v018_features.py`)、调整 4 (`test_query_templates.py`)，342 → 347 pass
 - v0.1.19 抛弃 v0.1.18 的 keyword-based query，改**纯 name-only + LLM 抽取**：(1) `review_queries()` 返回 `list[(text, allowlist)]` 而非 `list[str]`，每 query 文本只是 `f'"{name}"'`，allowlist 是单域（per-domain focus）；(2) `MAX_DOMAINS_PER_RUN = 15`，`_all_names(max_n=2)` → ≤30 query/公司；(3) 删除 slang 召回分支（`review_pass2_queries()` 留作 stub 返回 []），slang 词交给 LLM 抽取步识别"内卷 / ICU / 摆烂"等口语词；(4) `tavily_reviews.collect()` 单 pass 迭代 pairs，删 v0.1.18 的 PASS2 触发逻辑。User 在小红书能搜到棒谷但 pipeline 搜不到 — 根因是 keyword 命中不到 UGC 真实表达 + Tavily 对 UGC 覆盖差。新设计每 query 更聚焦（单域 allowlist），LLM 抽取 signal-to-noise 更好。零 LLM 调用增量。测试 +1 (`tests/test_v018_features.py`)、调整 19 (`tests/test_query_templates.py` + `test_normalize.py` + `test_pipeline_smoke.py` + `test_v018_features.py`)，347 → 348 pass
+- v0.1.20 加 **搜狗微信搜索 collector** 作为 reviews 域补充源：(1) 新文件 `src/jobhunter/collectors/sogou_weixin.py`，`domain="reviews"` 复用现有 bucket（不动 `CollectorResult.domain` Literal，零 schema 改动）；(2) 每 run 最多 3 query（`_all_names(max_n=3)`），24h cache（`FileCache` from `search/cache.py`），间隔随机 2-5s throttle（`sogou_weixin_min_interval` / `sogou_weixin_max_interval` 默认值，可 .env 覆盖）；(3) 反爬拦截检测：body 长度 <500 chars OR 含 `antispider` / `请输入验证码` / `verify` / `您的访问过于频繁` 关键字 → 标记 `error="anti_bot_redirect"` 立即软失败；(4) `Referer: https://weixin.sogou.com/` 头 + 真实 Chrome/Windows UA（来自 `utils/http.py` `make_client()`）；(5) HTML 解析用 beautifulsoup4 + lxml（已在依赖），多 selector fallback（`div.news-list li` / `li.news-list-li` / `div.news-list`），URL 必须含 `mp.weixin.qq.com` 否则丢弃；(6) `_all_names()` 复用 v0.1.18 别名 fallback；(7) `BaseCollector.__init__` 不动，新 collector 自己接 `cache`；(8) `ReportData.collector_notes: dict[str,str]` 新字段；`builder.extract_collector_notes()` 从 `CollectorResult.error` 抽首 token 作 marker；模板 reviews 章顶部加 `data-source-note` 灰字小条，CSS 浅灰底 + 左边细线 + 14px（`report.css` +29 行）；(9) `pipeline.run()` 在 `ReportData` 构造前调 `extract_collector_notes(results)` 灌入；`build_all()` 签名扩为 `(settings, *, tavily, http, cache)`，三处调用点（round 1 + round 2 + `_build_peer_summary`）同步传 `cache=cache`；(10) `.env` 设 `SOGOU_WEIXIN_ENABLED=false` 临时关停（IP 被 ban 后用）。⚠️ Sogou ToS 禁止未授权爬虫，已用随机 throttle + 24h cache 把风险压到最低。测试 +15 (`tests/test_v0120_features.py` 全过)，348 → 363 pass
 - 用户的两个深度建议记入「下次接手」：**1.** 行业路由（不是岗位路由） — LLM 先判公司行业再选数据源；当前 `domains_for_position()` 是位置路由的妥协，**做全行业路由需要一次额外 LLM 调用**。**2.** 3 级证据等级（用户主张 / 多源重复出现 / 有公开证据证实） — 当前 `support_tier`（unverified / single-source / corroborated / multi-domain）已经在做类似分级，命名差异可对齐，详见 [src/jobhunter/report/builder.py:compute_signal_supports](src/jobhunter/report/builder.py)
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 

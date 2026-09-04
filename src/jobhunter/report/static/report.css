@@ -422,6 +422,34 @@ h1.display, h2.display {
   padding-top: 2px;
 }
 
+/* ---------- v0.1.20 — Per-collector soft-fail note (e.g. sogou anti-bot) ---------- */
+
+.data-source-note {
+  background: var(--paper);
+  border-left: 2px solid var(--ink-soft);
+  padding: 10px 14px;
+  margin: 0 0 20px 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.data-source-note-tag {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.data-source-note a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--ink-soft);
+  text-underline-offset: 2px;
+}
+
 /* ---------- Slang glossary (网络词解读) ---------- */
 
 .slang-glossary {
