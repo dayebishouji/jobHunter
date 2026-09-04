@@ -197,7 +197,15 @@ class SogouWeixinCollector(BaseCollector):
         if len(body) < _MIN_BODY_LEN:
             return True
         low = body.lower()
-        return any(ind.lower() in low for ind in _BLOCK_INDICATORS)
+        if any(ind.lower() in low for ind in _BLOCK_INDICATORS):
+            return True
+        # v0.1.22 — Sogou's anti-bot challenge page ships its own CSS/JS bundle
+        # even when none of the textual indicators appear (some recent variants
+        # drop the Chinese warning copy). Match the asset names directly so we
+        # catch the challenge page reliably.
+        if "static/css/anti" in low or "antispider.min.js" in low or "anti.min.css" in low:
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Parse HTML → RawItems

@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 393 tests
+pytest                        # 427 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.21）
+## 已知限制（v0.1.22）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -104,6 +104,7 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.19 reviews 全量 name-only 召回 + LLM 抽取**：抛弃 v0.1.18 的 keyword-based query（`"X" 加班` / `"X" 离职率` / `"X" 知乎` …），改成 **per-domain name-only**：每个域一条 query，文本只是 `"X"`，不挂任何关键词，让 Tavily 返回该域里所有提到公司的内容，由 LLM 抽取步做语义分类（找 salary / overtime / vibe / turnover 信号，不依赖关键词命中）。`review_queries()` 现在返回 `list[(text, allowlist)]`，`MAX_DOMAINS_PER_RUN=15`，每公司 ≤30 query（15 域 × 2名字，含 v0.1.18 别名兜底）。slang 召回删除（LLM 抽取已经能识别 "内卷 / ICU / 摆烂"）。成本与 v0.1.18 相当，但**每 query 更聚焦**（单域 allowlist），LLM 抽取的 signal-to-noise 更好
 - **v0.1.20 搜狗微信 reviews 补充源**：直抓 `weixin.sogou.com` 把微信公众号全文索引接进 reviews 域（`domain="reviews"` 复用现有 bucket，下游 LLM 抽取零改动）。每 run 最多 3 query（主名 + 别名，来自 `_all_names`）、24h cache、间隔随机 2-5s throttle。被反爬拦截时软失败，`error="anti_bot_redirect"`，报告 reviews 章顶部加灰字小条提示用户手动到 [weixin.sogou.com](https://weixin.sogou.com) 核查。`.env` 设 `SOGOU_WEIXIN_ENABLED=false` 可关闭（IP 被 ban 时）。⚠️ Sogou ToS 禁止未授权爬虫，跑高频会被封 IP，已用随机 throttle + 24h cache 把风险压到最低
 - **v0.1.21 报告加「公司人数 / 参保人数 / 典型下班时间」三件套**：(1) `CompanyProfile` 新增 `employee_count: int | None`（精确员工数，来自天眼查/招聘/官网，模糊字符串 "约 1200 人" 自动 coerce 成 1200）+ `insured_count: int | None`（社保参保人数——判断公司真实规模的最强信号，常缺失 → null 兜底）；(2) `ReviewFacts` 新增 `typical_off_time: str | None`（UGC 反复出现的「团队典型下班时间」，如 "约 10:00 PM" / "弹性 9-6"），配 `typical_off_time_evidence` 一句原文引用 + `typical_off_time_url` 最相关来源；(3) `EXTRACT_COMPANY_PROFILE_SUFFIX` 新 prompt（之前 `processing/extract.py` 里 `"company_info": ""` 是空的，导致 LLM 抽取公司画像时无具体指令经常拿到空 + 之前你看到的 `record_company_profile` warning），现在明确要求抽 A-O 共 15 个字段；(4) 报告公司画像章 stat strip 加「员工数」+「参保人数」两列；加班章加「典型下班时间」突出卡片（border-left + 原文引用 + 来源链接）。测试 +30 (`tests/test_v0121_features.py`)，363 → 393 pass
+- **v0.1.22 修 3 个 reviews / sogou 静默 bug**：(1) **template 横幅 bug** — v0.1.20 加的搜狗反爬提示横幅只匹配 `error="anti_bot_redirect"` 一种字符串，当搜狗返回 `no_results`（fetch 成功但解析 0 条，往往是搜狗静默软封）时报告里完全看不到提示；现在 banner 同时匹配两种错误码，且文案区分两种情况；(2) **搜狗反爬检测漏报** — 搜狗近期反爬挑战页去掉了中文警告文案，只剩 `anti.min.css` + `antispider.min.js` 资源 bundle，原来 4 个关键词（`antispider`/`verify`/`请输入验证码`/`您的访问过于频繁`）漏判，新加 3 个资源名 fallback (`static/css/anti`/`antispider.min.js`/`anti.min.css`)，让挑战页 100% 被识别为 `anti_bot_redirect`；(3) **reviews 域消费品品牌检索污染** — Tavily 对消费品品牌（如美的）name-only 查询会返回大量产品评测 / 营销页 / 登录页，LLM 抽取正确剔除但 reviews 章空；现在 `normalize.py` 加 `REVIEW_URL_PATTERNS` host→URL 子串白名单（覆盖 1point3acres/bbs、知乎/question、牛客/discuss、看准/firm、脉脉/article 等），非职场内容在送进 LLM 之前就被过滤掉；其他域（news/business/judicial）不受影响（filter 只对 reviews bucket 生效）。测试 +34 (`tests/test_v0122_features.py`)，393 → 427 pass
 - 不支持：批量多公司（watch 已有 CRUD，批跑未做）、Web 服务、Playwright
 
 ## 下次接手可考虑的深度改动

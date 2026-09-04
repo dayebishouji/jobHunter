@@ -511,11 +511,21 @@
   </header>
   {{ story_block('reviews') }}
 
-  {# v0.1.20 — Per-collector soft-fail banner (e.g. sogou_weixin anti-bot). #}
-  {% if data.collector_notes.get("sogou_weixin") == "anti_bot_redirect" %}
+  {# v0.1.22 — Per-collector soft-fail banner (sogou_weixin can return either
+     "anti_bot_redirect" (Sogou's JS challenge page detected) or
+     "no_results" (fetch succeeded but the result page held 0 mp.weixin.qq.com
+     links — usually a soft block from Sogou's anti-bot CDN that passed our
+     keyword check). Both should surface to the user as a manual-check hint. #}
+  {% set sogou_note = data.collector_notes.get("sogou_weixin") %}
+  {% if sogou_note in ("anti_bot_redirect", "no_results") %}
     <div class="data-source-note">
       <span class="data-source-note-tag">部分源未覆盖</span>
-      搜狗微信搜索被反爬拦截 — 部分公众号评测文章未纳入本次抓取。建议手动到 <a href="https://weixin.sogou.com/weixin?type=2&amp;query={{ data.query.company|urlencode }}&amp;ie=utf8" target="_blank" rel="noopener">weixin.sogou.com</a> 核查「{{ data.query.company }}」相关公众号文章。
+      {% if sogou_note == "anti_bot_redirect" %}
+      搜狗微信搜索被反爬拦截 — 部分公众号评测文章未纳入本次抓取。
+      {% else %}
+      搜狗微信搜索本次未抓到公众号文章 — 可能被反爬静默拦截，也可能该公司公众号内容本身较少。
+      {% endif %}
+      建议手动到 <a href="https://weixin.sogou.com/weixin?type=2&amp;query={{ data.query.company|urlencode }}&amp;ie=utf8" target="_blank" rel="noopener">weixin.sogou.com</a> 核查「{{ data.query.company }}」相关公众号文章。
     </div>
   {% endif %}
 
