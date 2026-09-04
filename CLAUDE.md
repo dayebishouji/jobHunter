@@ -11,7 +11,7 @@
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
 scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
-.venv/Scripts/python.exe -m pytest                       # 168 tests
+.venv/Scripts/python.exe -m pytest                       # 179 tests
 ```
 
 `.env` 在 `e:\project\jobHunter\.env`（`ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` 可选走 ccswitch 中转 + `TAVILY_API_KEY`）。
@@ -33,7 +33,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.1.8）
+## 当前边界（v0.1.9）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
 - ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
@@ -56,6 +56,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - v0.1.8 起 EXTRACT_REVIEWS_SUFFIX 要求 evidence 字段保留原文引号包裹的关键句（让读者能直接核对原文）
 - NewsFacts._drop_url_missing 只接受 dict（LLM 侧）；model_validate 才能传 list[NewsItem] 实例
 - NewsItem.published_at 加 `_coerce_published_at`：date/datetime → ISO 字符串，宽松中文日期 → YYYY-MM-DD
+- v0.1.9 起 `REVIEW_DOMAINS` 扩到 24 个域名（15 通用 + 4 跨境电商 + 1 游戏 NGA + 1 医护丁香园 + 3 程序员掘金/思否/OSChina），新增 `POSITION_DOMAIN_HINTS` + `domains_for_position(position)` 按岗位关键词过滤 Tavily allowlist 实现成本控制（空岗位/未识别岗位 → 全量 fallback；如 "后端" → 通用+程序员，跳过跨境/医护/游戏）
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 
 ## 下次接手该知道

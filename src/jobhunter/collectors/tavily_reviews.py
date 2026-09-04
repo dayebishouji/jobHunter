@@ -8,7 +8,7 @@ from jobhunter.collectors.base import BaseCollector
 from jobhunter.config import Settings
 from jobhunter.models.query import CompanyQuery
 from jobhunter.models.raw import CollectorResult
-from jobhunter.search.query_templates import REVIEW_DOMAINS, review_queries
+from jobhunter.search.query_templates import domains_for_position, review_queries
 from jobhunter.search.tavily_client import TavilyClient
 
 logger = logging.getLogger(__name__)
@@ -31,10 +31,15 @@ class TavilyReviewsCollector(BaseCollector):
             )
         items = []
         errors: list[str] = []
+        # Cost-control: when the user supplied a recognized industry position
+        # (e.g. "后端", "医生", "跨境运营"), restrict Tavily's allowlist to the
+        # relevant verticals instead of querying all 24 domains. Empty /
+        # unrecognized positions fall back to the full REVIEW_DOMAINS union.
+        allowlist = domains_for_position(query.position)
         for q_text in review_queries(query):
             try:
                 items.extend(
-                    await self._tavily.search(q_text, include_domains=REVIEW_DOMAINS)
+                    await self._tavily.search(q_text, include_domains=allowlist)
                 )
             except Exception as e:  # noqa: BLE001
                 logger.warning("reviews query failed: %s | %s", q_text, e)
