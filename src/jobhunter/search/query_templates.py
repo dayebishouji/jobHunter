@@ -33,6 +33,12 @@ GENERAL_REVIEW_DOMAINS: list[str] = [
     "lagou.com",
     "zhipin.com",
     "dianping.com",
+    # v0.1.11 — A 级全行业通用（黑猫投诉是真正的"风险信号"金矿）
+    "tousu.sina.com.cn",   # 黑猫投诉 — 315 投诉平台，全行业
+    "36dianping.com",      # 36 氪企服点评 — B2B SaaS / 企业服务评价
+    "weibo.com",           # 微博（舆情爆料 — 与 NEWS_DOMAINS 双备案）
+    "douyin.com",          # 抖音（视频曝光 — 与 NEWS_DOMAINS 双备案）
+    "kuaishou.com",        # 快手（下沉市场 / 本地企业评价）
 ]
 
 # Vertical-industry UGC platforms (added in v0.1.9 — 跨境小白 discovery).
@@ -43,6 +49,9 @@ CROSS_BORDER_REVIEW_DOMAINS: list[str] = [
     "zhiwuwubuyan.com",        # 知无不言 — 跨境圈最活跃论坛
     "amz123.com",              # AMZ123 — 跨境导航 + 人才库
     "10100.com",               # 大数跨境 — 行业媒体
+    # v0.1.11 — 跨境电商补充
+    "cifnews.com",             # 雨果跨境 — 行业媒体
+    "shangjia.com",            # 卖家之家 — 卖家互助社区
 ]
 
 GAMING_REVIEW_DOMAINS: list[str] = [
@@ -82,6 +91,33 @@ HR_REVIEW_DOMAINS: list[str] = [
     "hrloo.com",               # 三茅人力资源网 — 400 万 HR 用户
 ]
 
+# v0.1.11 — B 级行业垂类（黑猫投诉是真正的"风险信号"金矿，全行业已入 GENERAL）。
+# 这些触发由 POSITION_DOMAIN_HINTS 关键词决定，避免在无关行业烧 credits。
+AUTO_REVIEW_DOMAINS: list[str] = [
+    "autohome.com.cn",         # 汽车之家 — 车主社区 + 投诉
+    "dongchedi.com",           # 懂车帝 — 评测 + 投诉
+    "yiche.com",               # 易车 — 行业资讯 + 评价
+    "12365auto.com",           # 车质网 — 汽车质量投诉集中地（背调高价值）
+]
+
+FINANCE_REVIEW_DOMAINS: list[str] = [
+    "xueqiu.com",              # 雪球 — 投资者社区
+    "guba.eastmoney.com",      # 东方财富股吧 — 散户讨论
+    "10jqka.com.cn",           # 同花顺 — 财经社区
+]
+
+REAL_ESTATE_REVIEW_DOMAINS: list[str] = [
+    "fang.com",                # 房天下 — 楼盘 + 评价
+    "anjuke.com",              # 安居客 — 二手房 / 中介评价
+    "ke.com",                  # 贝壳找房 — 经纪人评价
+]
+
+LOGISTICS_REVIEW_DOMAINS: list[str] = [
+    "360che.com",              # 卡车之家 — 货车司机社区
+    "huochebang.com",          # 货车帮 — 司机 / 货主
+    "yunmanman.com",           # 运满满 — 货运信息平台
+]
+
 REVIEW_DOMAINS: list[str] = sorted({
     *GENERAL_REVIEW_DOMAINS,
     *CROSS_BORDER_REVIEW_DOMAINS,
@@ -93,6 +129,10 @@ REVIEW_DOMAINS: list[str] = sorted({
     *DESIGN_REVIEW_DOMAINS,
     *CIVIL_SERVICE_REVIEW_DOMAINS,
     *HR_REVIEW_DOMAINS,
+    *AUTO_REVIEW_DOMAINS,
+    *FINANCE_REVIEW_DOMAINS,
+    *REAL_ESTATE_REVIEW_DOMAINS,
+    *LOGISTICS_REVIEW_DOMAINS,
 })
 
 # Position keyword → vertical allowlist. Lowercase substring match against
@@ -167,6 +207,38 @@ POSITION_DOMAIN_HINTS: dict[str, list[str]] = {
     "人力": HR_REVIEW_DOMAINS,
     "招聘": HR_REVIEW_DOMAINS,
     "hrbp": HR_REVIEW_DOMAINS,
+    # 汽车 (v0.1.11)
+    "汽车": AUTO_REVIEW_DOMAINS,
+    "车辆": AUTO_REVIEW_DOMAINS,
+    "试驾": AUTO_REVIEW_DOMAINS,
+    "4s": AUTO_REVIEW_DOMAINS,
+    # 金融 (v0.1.11)
+    "金融": FINANCE_REVIEW_DOMAINS,
+    "银行": FINANCE_REVIEW_DOMAINS,
+    "证券": FINANCE_REVIEW_DOMAINS,
+    "基金": FINANCE_REVIEW_DOMAINS,
+    "股票": FINANCE_REVIEW_DOMAINS,
+    "券商": FINANCE_REVIEW_DOMAINS,
+    "保险": FINANCE_REVIEW_DOMAINS,
+    "投资": FINANCE_REVIEW_DOMAINS,
+    "理财": FINANCE_REVIEW_DOMAINS,
+    "量化": FINANCE_REVIEW_DOMAINS,
+    # 房地产 / 物业 / 中介 (v0.1.11)
+    "物业": REAL_ESTATE_REVIEW_DOMAINS,
+    "中介": REAL_ESTATE_REVIEW_DOMAINS,
+    "租房": REAL_ESTATE_REVIEW_DOMAINS,
+    "房产": REAL_ESTATE_REVIEW_DOMAINS,
+    "置业": REAL_ESTATE_REVIEW_DOMAINS,
+    "楼盘": REAL_ESTATE_REVIEW_DOMAINS,
+    "经纪人": REAL_ESTATE_REVIEW_DOMAINS,
+    # 物流 / 货运 / 快递 (v0.1.11)
+    "物流": LOGISTICS_REVIEW_DOMAINS,
+    "货运": LOGISTICS_REVIEW_DOMAINS,
+    "快递": LOGISTICS_REVIEW_DOMAINS,
+    "卡车": LOGISTICS_REVIEW_DOMAINS,
+    "司机": LOGISTICS_REVIEW_DOMAINS,
+    "货车": LOGISTICS_REVIEW_DOMAINS,
+    "配送": LOGISTICS_REVIEW_DOMAINS,
 }
 
 

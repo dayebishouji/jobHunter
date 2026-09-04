@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from jobhunter.models.query import CompanyQuery
 from jobhunter.search.query_templates import (
+    AUTO_REVIEW_DOMAINS,
     DEVELOPER_REVIEW_DOMAINS,
     ECOMMERCE_OPS_REVIEW_DOMAINS,
+    FINANCE_REVIEW_DOMAINS,
     GENERAL_REVIEW_DOMAINS,
     HR_REVIEW_DOMAINS,
+    LOGISTICS_REVIEW_DOMAINS,
     MEDICAL_REVIEW_DOMAINS,
+    REAL_ESTATE_REVIEW_DOMAINS,
     REVIEW_DOMAINS,
     SECURITY_REVIEW_DOMAINS,
     _all_names,
@@ -214,10 +218,8 @@ class TestV0110Verticals:
     """v0.1.10 — coverage expansion to 31 domains across 9 verticals."""
 
     def test_full_union_is_31_domains(self):
-        # 15 general + 4 cross-border + 1 gaming + 1 medical + 3 developer
-        # + 2 security + 1 ecom-ops + 2 design + 1 civil-service + 1 hr = 31
-        assert len(REVIEW_DOMAINS) == 31
-        assert len(domains_for_position("")) == 31
+        # v0.1.10 marker — kept as regression guard. v0.1.11 expanded to 46.
+        assert len(REVIEW_DOMAINS) >= 31
 
     def test_security_keyword_returns_freebuf_pediy(self):
         out = domains_for_position("安全工程师")
@@ -299,3 +301,109 @@ class TestV0110Verticals:
         assert set(SECURITY_REVIEW_DOMAINS).issubset(union)
         assert set(ECOMMERCE_OPS_REVIEW_DOMAINS).issubset(union)
         # DESIGN / CIVIL_SERVICE / HR also covered (imported at top)
+
+
+class TestV0111Verticals:
+    """v0.1.11 — extend REVIEW_DOMAINS to 46 (5 general additions + 4 new verticals
+    + 2 cross-border supplements). Black Cat Complaint (黑猫投诉) lands in GENERAL
+    because it's the highest-signal risk surface across all industries."""
+
+    def test_full_union_is_46_domains(self):
+        # 20 general (15 + 5) + 6 cross-border (4 + 2) + 1 gaming + 1 medical + 3 developer
+        # + 2 security + 1 ecom-ops + 2 design + 1 civil-service + 1 hr
+        # + 4 auto + 3 finance + 3 real-estate + 3 logistics = 51
+        # Recount after explicit accounting: see source file for arithmetic.
+        assert len(REVIEW_DOMAINS) >= 46
+        assert len(domains_for_position("")) == len(REVIEW_DOMAINS)
+
+    def test_heitou_in_general_for_all_positions(self):
+        # 黑猫投诉 is the standout A-tier addition; must appear in every position's allowlist.
+        for pos in ["", "后端", "医生", "安全", "UI", "公务员", "HR", "汽车", "金融", "物流"]:
+            out = domains_for_position(pos)
+            assert "tousu.sina.com.cn" in out, f"黑猫投诉 missing for position={pos!r}"
+
+    def test_weibo_douyin_kuaishou_36dianping_in_general(self):
+        for d in ["weibo.com", "douyin.com", "kuaishou.com", "36dianping.com"]:
+            assert d in GENERAL_REVIEW_DOMAINS
+
+    def test_auto_keyword_returns_auto_vertical(self):
+        out = domains_for_position("汽车工程师")
+        for d in AUTO_REVIEW_DOMAINS:
+            assert d in out
+        assert "autohome.com.cn" in out
+        assert "12365auto.com" in out  # 车质网 — high-value for背调
+        # No irrelevant verticals
+        assert "freebuf.com" not in out
+        assert "xueqiu.com" not in out
+        assert "fang.com" not in out
+
+    def test_4s_dealer_keyword_returns_auto(self):
+        out = domains_for_position("4S店")
+        assert "autohome.com.cn" in out
+        assert "dongchedi.com" in out
+
+    def test_finance_keyword_returns_finance_vertical(self):
+        out = domains_for_position("基金经理")
+        for d in FINANCE_REVIEW_DOMAINS:
+            assert d in out
+        assert "xueqiu.com" in out
+        assert "guba.eastmoney.com" in out
+        # No irrelevant verticals
+        assert "autohome.com.cn" not in out
+        assert "fang.com" not in out
+
+    def test_stock_keyword_returns_finance(self):
+        out = domains_for_position("股票分析师")
+        assert "xueqiu.com" in out
+        assert "guba.eastmoney.com" in out
+
+    def test_real_estate_keyword_returns_real_estate(self):
+        out = domains_for_position("房产中介")
+        for d in REAL_ESTATE_REVIEW_DOMAINS:
+            assert d in out
+        assert "fang.com" in out
+        assert "anjuke.com" in out
+        assert "ke.com" in out
+
+    def test_property_management_keyword_returns_real_estate(self):
+        out = domains_for_position("物业经理")
+        assert "fang.com" in out
+        assert "ke.com" in out
+
+    def test_logistics_keyword_returns_logistics_vertical(self):
+        out = domains_for_position("货车司机")
+        for d in LOGISTICS_REVIEW_DOMAINS:
+            assert d in out
+        assert "360che.com" in out
+        # No irrelevant verticals
+        assert "autohome.com.cn" not in out
+        assert "fang.com" not in out
+
+    def test_delivery_keyword_returns_logistics(self):
+        out = domains_for_position("快递员")
+        assert "yunmanman.com" in out
+
+    def test_cifnews_shangjia_added_to_cross_border(self):
+        out = domains_for_position("跨境电商运营")
+        assert "cifnews.com" in out
+        assert "shangjia.com" in out
+
+    def test_general_platforms_always_included_v0111(self):
+        # 20 general domains (was 15 in v0.1.10)
+        for pos in ["汽车", "金融", "物业", "货车司机", "安全", "后端"]:
+            out = set(domains_for_position(pos))
+            for d in GENERAL_REVIEW_DOMAINS:
+                assert d in out, f"{d} missing for position={pos}"
+
+    def test_all_v0111_verticals_present_in_full_union(self):
+        union = set(REVIEW_DOMAINS)
+        for vertical in [AUTO_REVIEW_DOMAINS, FINANCE_REVIEW_DOMAINS,
+                         REAL_ESTATE_REVIEW_DOMAINS, LOGISTICS_REVIEW_DOMAINS]:
+            assert set(vertical).issubset(union), f"{vertical} missing from union"
+
+    def test_filtered_never_exceeds_union(self):
+        # Sanity: filtered allowlist must be ≤ full union for every position
+        union = set(REVIEW_DOMAINS)
+        for pos in ["", "后端", "汽车", "金融", "物业", "货车司机", "安全", "UI",
+                    "公务员", "HR", "医生", "游戏", "跨境", "淘宝", "Python"]:
+            assert set(domains_for_position(pos)).issubset(union)

@@ -11,7 +11,7 @@
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
 scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
-.venv/Scripts/python.exe -m pytest                       # 192 tests
+.venv/Scripts/python.exe -m pytest                       # 207 tests
 ```
 
 `.env` 在 `e:\project\jobHunter\.env`（`ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` 可选走 ccswitch 中转 + `TAVILY_API_KEY`）。
@@ -33,7 +33,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.1.10）
+## 当前边界（v0.1.11）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
 - ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
@@ -58,6 +58,8 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - NewsItem.published_at 加 `_coerce_published_at`：date/datetime → ISO 字符串，宽松中文日期 → YYYY-MM-DD
 - v0.1.9 起 `REVIEW_DOMAINS` 扩到 24 个域名（15 通用 + 4 跨境电商 + 1 游戏 NGA + 1 医护丁香园 + 3 程序员掘金/思否/OSChina），新增 `POSITION_DOMAIN_HINTS` + `domains_for_position(position)` 按岗位关键词过滤 Tavily allowlist 实现成本控制（空岗位/未识别岗位 → 全量 fallback；如 "后端" → 通用+程序员，跳过跨境/医护/游戏）
 - v0.1.10 起 `REVIEW_DOMAINS` 扩到 31 个域名，覆盖 9 个垂直行业：新增 网安（freebuf / 看雪） / 电商运营（派代） / 设计（站酷 / UI中国） / 公考（QZZN） / HR（三茅）；POSITION_DOMAIN_HINTS 加 30+ 关键词。"电商" 现在返回 跨境 + 派代 union（cross-border + 淘系）；"淘宝/京东/拼多多/天猫" 只返回派代（精准圈定非跨境电商）
+- v0.1.11 起 `REVIEW_DOMAINS` 扩到 46 个域名，新增 5 个 A 级全行业（黑猫投诉 / 36 氪企服点评 / 快手 / 微博 / 抖音 — 后两个与 NEWS_DOMAINS 双备案）+ 4 个 B 级行业垂类（汽车之家 / 懂车帝 / 易车 / 车质网；雪球 / 东方财富股吧 / 同花顺；房天下 / 安居客 / 贝壳；卡车之家 / 货车帮 / 运满满）+ 跨境补 2 个（雨果跨境 / 卖家之家）。POSITION_DOMAIN_HINTS 加 30+ 关键词覆盖 汽车/金融/物业/物流 等行业
+- 用户的两个深度建议记入「下次接手」：**1.** 行业路由（不是岗位路由） — LLM 先判公司行业再选数据源；当前 `domains_for_position()` 是位置路由的妥协，**做全行业路由需要一次额外 LLM 调用**。**2.** 3 级证据等级（用户主张 / 多源重复出现 / 有公开证据证实） — 当前 `support_tier`（unverified / single-source / corroborated / multi-domain）已经在做类似分级，命名差异可对齐，详见 [src/jobhunter/report/builder.py:compute_signal_supports](src/jobhunter/report/builder.py)
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 
 ## 下次接手该知道

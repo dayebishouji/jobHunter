@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jobhunter"
-version = "0.1.10"
+version = "0.1.11"
 description = "Reverse due-diligence CLI for Chinese job seekers"
 requires-python = ">=3.10"
 readme = "README.md"

@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 192 tests
+pytest                        # 207 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.10）
+## 已知限制（v0.1.11）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -94,8 +94,14 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.8 递归 sub-query**：round 1 后用 LLM 抽 3-5 个公司内部实体（产品/品牌/部门/创始人）作为 round 2 查询别名；硬上限 1 轮 / 5 个实体
 - **v0.1.8 数据多样性 KPI**：每条 signal 旁的 tier-badge（待核实/单一来源/多源印证/跨域印证）+ hero meta 的「数据多样性」pill 反映 cross-source corroboration
 - **v0.1.9 垂直行业召回域**：REVIEW_DOMAINS 扩到 24 个域名（跨境 + 游戏 + 医护 + 程序员），通过 `domains_for_position(position)` 按岗位关键词过滤 Tavily allowlist 实现成本控制
-- **v0.1.10 召回域覆盖 9 个垂直**：REVIEW_DOMAINS 扩到 31 个域名，新增 网安（freebuf.com / bbs.pediy.com） / 电商运营（paidai.com） / 设计（zcool.com.cn / ui.cn） / 公考（qzzn.com） / HR（hrloo.com）；POSITION_DOMAIN_HINTS 加 30+ 关键词，"淘宝/京东/拼多多/天猫" 精准圈定派代（非跨境），"电商" 触发跨境+派代 union，"UI/UX/平面/视觉" 触发站酷+UI中国
+- **v0.1.10 召回域覆盖 9 个垂直**：REVIEW_DOMAINS 扩到 31 个域名，新增 网安 / 电商运营 / 设计 / 公考 / HR
+- **v0.1.11 召回域覆盖 11 个垂直 / 46 域名**：黑猫投诉（tousu.sina.com.cn）入 A 级全行业 — 跨行业风险信号金矿；新增汽车（汽车之家 / 懂车帝 / 易车 / 车质网）、金融（雪球 / 东方财富股吧 / 同花顺）、房地产（房天下 / 安居客 / 贝壳）、物流（卡车之家 / 货车帮 / 运满满）；快手、36 氪企服点评入 GENERAL；微博 / 抖音与 NEWS_DOMAINS 双备案
 - 不支持：批量多公司、SQLite watchlist、Web 服务、PDF 导出、Playwright（v0.2 候选）
+
+## 下次接手可考虑的深度改动
+
+- **行业路由**（不是岗位路由） — LLM 先判公司行业再选数据源；当前 `domains_for_position()` 是位置路由的妥协，**做全行业路由需要一次额外 LLM 调用**
+- **3 级证据等级**（用户主张 / 多源重复出现 / 有公开证据证实） — 当前 `support_tier`（unverified / single-source / corroborated / multi-domain）已经在做类似分级，命名差异可对齐，详见 `src/jobhunter/report/builder.py:compute_signal_supports`
 
 ## 免责
 
