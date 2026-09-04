@@ -300,7 +300,8 @@ async def _gen_interview_questions(
     axes,
     findings: AggregatedFindings | None,
 ) -> list[str]:
-    """Plain-text LLM call → split by line."""
+    """Plain-text LLM call → split by line. v0.1.14 — prepended with
+    fact-driven questions derived from findings (deterministic, pointy)."""
     from jobhunter.processing.extract import parse_interview_lines
 
     axes_text = "\n".join(
@@ -334,5 +335,103 @@ async def _gen_interview_questions(
         judicial=snippets.get("judicial", "司法: 数据缺失"),
         company_profile=snippets.get("company_profile", "公司画像: 数据缺失"),
     )
-    text = await llm.chat(system=INTERVIEW_SYSTEM, user=user)
-    return parse_interview_lines(text)
+    try:
+        text = await llm.chat(system=INTERVIEW_SYSTEM, user=user)
+        llm_qs = parse_interview_lines(text)
+    except Exception as e:  # noqa: BLE001 - LLM is best-effort here
+        logger.warning("interview question generation failed: %s", e)
+        llm_qs = []
+
+    fact_qs = _fact_driven_interview_questions(query, findings)
+    # De-dup: fact-driven wins over LLM (it's data-grounded).
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in fact_qs + llm_qs:
+        key = q.strip()[:30]
+        if key and key not in seen:
+            seen.add(key)
+            out.append(q)
+    return out[:10]
+
+
+def _fact_driven_interview_questions(
+    query: CompanyQuery, findings: AggregatedFindings | None
+) -> list[str]:
+    """v0.1.14 — Deterministic question synthesis from findings. Each question
+    is anchored to a specific fact so it's pointy enough to draw a real
+    answer (rather than the LLM's safe generalities).
+
+    Returns 0-5 questions in priority order:
+      - judicial sample cases → "请问最近这 X 起诉讼的具体情况？"
+      - salary spread → "实际月薪与 JD 描述存在落差，能介绍下薪酬结构？"
+      - heavy overtime → "团队平均下班时间是几点？"
+      - negative vibe → "团队里有没有让新人不一定能适应的工作节奏或文化？"
+      - anomaly_listed → "公司曾被列入经营异常名录，能否说明下当时情况？"
+    """
+    qs: list[str] = []
+    if not findings:
+        return qs
+
+    j = findings.judicial
+    if j is not None:
+        n_cases = j.case_count_total or 0
+        n_enforce = j.enforcement_records or 0
+        if (n_cases + n_enforce) > 0:
+            if j.sample_cases:
+                sample = j.sample_cases[0]
+                yr = f"（{sample.year} 年）" if sample.year else ""
+                qs.append(
+                    f"我看到公开记录里有一起「{sample.title}」{yr}——能否说明当时的情况和后续处理？"
+                )
+            else:
+                qs.append(
+                    f"公开数据显示公司累计 {n_cases} 起诉讼 / {n_enforce} 条被执行记录，"
+                    f"主要案由是哪类？是否还在审？"
+                )
+
+    rf = findings.reviews
+    if rf is not None:
+        sal = rf.salary_signals or []
+        # Wide salary range (max-min > 8K) often signals inconsistent leveling
+        nums = [s.base_monthly_k for s in sal if s.base_monthly_k]
+        if nums and (max(nums) - min(nums) > 8):
+            qs.append(
+                "评价里同岗位月薪跨度较大，能介绍下薪酬定级是怎么定的吗？"
+            )
+        ot = rf.overtime_signals or []
+        heavy = sum(1 for s in ot if s.intensity == "high")
+        if heavy >= 2:
+            qs.append(
+                f"评价里有 {heavy} 条提到高强度加班，团队平均下班时间是几点？"
+                f"加班是否有调休或加班费？"
+            )
+        vibe_neg = sum(1 for v in (rf.vibe_signals or []) if v.sentiment == "negative")
+        if vibe_neg >= 1:
+            qs.append(
+                "团队里有没有让新人不一定能适应的工作节奏或文化？"
+                "上一位离开这个岗位的同事是因为什么？"
+            )
+
+    nf = findings.news
+    if nf is not None and nf.sentiment == "negative" and (nf.items or []):
+        qs.append(
+            f"近期公开信息偏负面（{len(nf.items)} 条），"
+            f"公司内部是如何应对这些舆情的？"
+        )
+
+    bf = findings.business
+    if bf is not None and getattr(bf, "anomaly_listed", None):
+        qs.append(
+            "公开工商档案显示公司曾被列入经营异常名录，能否说明一下原因和后续处理？"
+        )
+
+    cp = findings.company_profile
+    if cp is not None and getattr(cp, "funding_stage", None):
+        stage = cp.funding_stage
+        if stage and stage not in ("已上市", "未融资"):
+            qs.append(
+                f"公司目前处于 {stage}，下一轮融资节奏是怎么样的？"
+                f"现金流大概能支撑多久？"
+            )
+
+    return qs[:5]

@@ -363,8 +363,20 @@
   {{ story_block('judicial') }}
 
   {% set j = data.judicial_facts %}
+  {% set j_zero = (j is not none) and ((j.case_count_total or 0) + (j.enforcement_records or 0)) == 0 %}
   {% if not j %}
-    <p class="empty">司法数据源在本次抓取中未能取得。建议人工到 <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">wenshu.court.gov.cn</a> 和 <a href="https://zxgk.court.gov.cn/" target="_blank" rel="noopener">zxgk.court.gov.cn</a> 核查「{{ data.query.company }}」涉诉与被执行记录。</p>
+    {# v0.1.14 — Judicial data not fetched (gsxt/wenshu soft-fail) is honest,
+       but we still frame it as a manual-check action rather than dead air. #}
+    <div class="chapter-takeaway" style="border-left:3px solid var(--risk-mid);">
+      <div class="chapter-takeaway-tag">未能取得司法数据</div>
+      <div>公开裁判文书网在本次抓取中未命中。建议人工到 <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">wenshu.court.gov.cn</a> 和 <a href="https://zxgk.court.gov.cn/" target="_blank" rel="noopener">zxgk.court.gov.cn</a> 核查「{{ data.query.company }}」涉诉与被执行记录。</div>
+    </div>
+  {% elif j_zero %}
+    {# v0.1.14 — Zero-record case is actually a positive signal. Reframe. #}
+    <div class="chapter-takeaway" style="border-left:3px solid var(--risk-good);">
+      <div class="chapter-takeaway-tag">公开记录中未发现诉讼或被执行</div>
+      <div>本次抓取范围内（裁判文书网 / 中国执行信息公开网 / 天眼查 / 企查查）没有命中「{{ data.query.company }}」的诉讼或被执行记录 —— 这通常是同行里相对少见的干净背景。建议正式入职前再人工核查一次（裁判文书网偶有收录延迟）。</div>
+    </div>
   {% else %}
   <div class="stat-strip">
     <div class="stat"><div class="stat-key">累计案件</div><div class="stat-val {{ 'bad' if (j.case_count_total or 0) > 50 else ('mid' if (j.case_count_total or 0) > 10 else 'good') }}">{{ j.case_count_total if j.case_count_total is not none else '—' }}</div></div>

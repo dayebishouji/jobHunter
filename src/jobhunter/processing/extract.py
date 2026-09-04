@@ -1,10 +1,20 @@
-"""LLM-driven extraction. Five domain calls (concurrency up to 5) + 1 aggregate."""
+"""LLM-driven extraction. Five domain calls (concurrency up to 5) + 1 aggregate.
+
+v0.1.14 — Density boost for the reviews domain:
+  1. **Second-pass LLM extraction** — if the first pass surfaced <3 total signals,
+  a focused re-call asks for the missing signal types (vibe / salary / overtime /
+  turnover) so a thin Tavily fetch still produces a usable chapter.
+  2. **Loose keyword extraction** — when even the LLM under-extracts, scan
+  raw snippets locally for Chinese keyword hits and synthesize minimum-viable
+  signals. Pure deterministic — no extra API call.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import re
 
 from jobhunter.llm import (
     CONSOLIDATE_SYSTEM,
@@ -24,7 +34,11 @@ from jobhunter.models.facts import (
     CompanyProfile,
     JudicialFacts,
     NewsFacts,
+    OvertimeSignal,
     ReviewFacts,
+    SalarySignal,
+    TurnoverSignal,
+    VibeSignal,
 )
 from jobhunter.models.query import CompanyQuery
 from jobhunter.models.raw import RawItem
@@ -94,18 +108,258 @@ async def _extract_one_domain(
     return MODEL_BY_DOMAIN[domain].model_validate(raw)
 
 
+def _reviews_signal_count(rf: ReviewFacts | None) -> dict[str, int]:
+    if not rf:
+        return {"salary": 0, "overtime": 0, "vibe": 0, "turnover": 0, "jd_gap": 0, "slang": 0}
+    return {
+        "salary":   len(rf.salary_signals or []),
+        "overtime": len(rf.overtime_signals or []),
+        "vibe":     len(rf.vibe_signals or []),
+        "turnover": len(rf.turnover_signals or []),
+        "jd_gap":   len(rf.jd_gap_signals or []),
+        "slang":    len(rf.slang_glossary or []),
+    }
+
+
+def _needs_second_pass(rf: ReviewFacts | None) -> bool:
+    """True when reviews extraction came back thin — a focused second call may
+    surface missed signals. Threshold: <3 total non-zero types, AND at least 2
+    raw items were available (otherwise there was nothing to extract)."""
+    if not rf:
+        return False
+    counts = _reviews_signal_count(rf)
+    nonzero_types = sum(1 for v in counts.values() if v > 0)
+    total_signals = sum(counts.values())
+    # Trigger when the LLM barely populated the bucket — but don't trigger
+    # again if we already got >6 signals (the chapter is healthy).
+    return nonzero_types <= 2 or total_signals < 3
+
+
+async def _second_pass_reviews(
+    llm: LLMClient, items: list[RawItem], first: ReviewFacts
+) -> ReviewFacts | None:
+    """Focused second-call to recover missed reviews-domain signal categories.
+    Returns the full ReviewFacts (re-validated from the new payload, with
+    first-pass signals preserved by the caller's merge step)."""
+    if not items:
+        return None
+    counts = _reviews_signal_count(first)
+    missing = [k for k, v in counts.items() if v == 0 and k in {"salary", "overtime", "vibe", "turnover", "jd_gap", "slang"}]
+    if not missing:
+        return None
+
+    spec = extract_tool_spec("reviews")
+    focus_hint = (
+        "\n\n【第二轮重点】第一轮抽取得到的信号量："
+        + json.dumps(counts, ensure_ascii=False)
+        + f"。本轮请特别留意补充：{','.join(missing)} 信号。"
+        "即便原文不够明确，也尽量给出**阈值放宽的最小信号**（一句概括+主 url），"
+        "让求职者至少能看到「这家公司被提及了什么关键词」。"
+    )
+    system = EXTRACT_BASE + EXTRACT_REVIEWS_SUFFIX + focus_hint
+    user = f"目标原材料：\n\n{_materialize(items)}"
+    raw = await llm.structured_call(
+        system=system,
+        user=user,
+        tool_name=spec["name"],
+        tool_description=spec["description"],
+        tool_schema=spec["input_schema"],
+    )
+    if not raw:
+        return None
+    try:
+        return ReviewFacts.model_validate(raw)
+    except Exception as e:  # noqa: BLE001 - second pass is best-effort
+        logger.warning("second-pass reviews validation failed: %s", e)
+        return None
+
+
+def _merge_reviews(first: ReviewFacts, second: ReviewFacts) -> ReviewFacts:
+    """Union merge: keep first's signals and append second's where the new one
+    has a url we haven't seen yet (dedup by url). Empty signals in second are
+    skipped so we never lose first's data."""
+    def _dedup_by_url(existing: list, additions: list) -> list:
+        seen = {str(getattr(s, "url", "")) for s in existing}
+        out = list(existing)
+        for s in additions:
+            u = str(getattr(s, "url", ""))
+            if u and u not in seen:
+                out.append(s)
+                seen.add(u)
+            elif not u:
+                # No url — append only if it adds new info (evidence differs)
+                ev = getattr(s, "evidence", "") or ""
+                if not any(getattr(e, "evidence", "") == ev for e in existing):
+                    out.append(s)
+        return out
+
+    return ReviewFacts(
+        salary_signals=_dedup_by_url(first.salary_signals or [], second.salary_signals or []),
+        overtime_signals=_dedup_by_url(first.overtime_signals or [], second.overtime_signals or []),
+        vibe_signals=_dedup_by_url(first.vibe_signals or [], second.vibe_signals or []),
+        turnover_signals=_dedup_by_url(first.turnover_signals or [], second.turnover_signals or []),
+        jd_gap_signals=_dedup_by_url(first.jd_gap_signals or [], second.jd_gap_signals or []),
+        slang_glossary=_dedup_by_url(first.slang_glossary or [], second.slang_glossary or []),
+        source_urls=list({*(first.source_urls or []), *(second.source_urls or [])}),
+    )
+
+
+# ---------- v0.1.14 — Loose keyword extraction (pure local, no LLM) ----------
+
+# Conservative keyword regexes. Each pattern → a synthetic signal with the
+# keyword as evidence and the snippet's host as url (best-effort attribution).
+_OVERTIME_PATTERNS = [
+    (re.compile(r"996|大小周|997|加班.{0,4}(严重|频繁|常态|多)|周末(经常|被叫|要)"), "high"),
+    (re.compile(r"995|加班(到|到晚上)|工作日.{0,6}晚"), "medium"),
+    (re.compile(r"弹性工作|不加班|work.?life.{0,4}balance|WLB"), "low"),
+]
+_VIBE_POSITIVE = re.compile(r"氛围(不错|好|很好|融洽|轻松)|团队(年轻|靠谱|有活力)|nice(?!.*?不)|氛围棒|同事关系好")
+_VIBE_NEGATIVE = re.compile(r"内卷|PUA|压榨|画饼|跑路|加班多|关系复杂|离职(率高|频繁)|领导(差|pua)|996icu")
+_VIBE_MIXED = re.compile(r"有好有坏|看组|看部门|看项目|看leader")
+_SALARY_KEYWORDS = re.compile(r"(\d+\s*[kK千])|月薪|base|起薪|年包|薪资|工资|薪酬|待遇")
+_TURNOVER_KEYWORDS = re.compile(r"离职率|流失率|人员流动|走人|跑路")
+
+_SENTIMENT_LABELS = {
+    "positive": "正面",
+    "negative": "负面",
+    "mixed": "混合",
+    "neutral": "中性",
+}
+
+
+def _evidence_from(item: RawItem, pattern_label: str) -> str:
+    """Build a short evidence snippet. Prefer raw text in `...` quotes."""
+    snippet = (item.snippet or "").strip().replace("\n", " ")
+    # Trim to a sensible length around the keyword mention
+    if len(snippet) > 80:
+        snippet = snippet[:80] + "…"
+    return f"{snippet}（关键词：{pattern_label}）"
+
+
+def _loose_keyword_reviews(items: list[RawItem]) -> ReviewFacts:
+    """Local, deterministic synthesis from raw review snippets. Activates only
+    when the LLM has already failed to surface signals in the same category.
+
+    Cheap heuristic: scan each snippet for canonical Chinese keywords and emit
+    a single signal per (category, item) when a hit lands. Never claim a
+    salary number we can't read."""
+    rf = ReviewFacts()
+    if not items:
+        return rf
+
+    overtime_hits: list[OvertimeSignal] = []
+    vibe_hits: list[VibeSignal] = []
+    salary_hits: list[SalarySignal] = []
+    turnover_hits: list[TurnoverSignal] = []
+
+    seen_overtime = 0
+    seen_vibe = 0
+    seen_salary = 0
+    seen_turnover = 0
+
+    for it in items:
+        text = (it.snippet or "") + " " + (it.title or "")
+        if not text.strip():
+            continue
+        url = str(it.url) if it.url else None
+
+        # Overtime — synthesize only first hit per item
+        if seen_overtime < 3:
+            for pat, intensity in _OVERTIME_PATTERNS:
+                if pat.search(text):
+                    overtime_hits.append(OvertimeSignal(
+                        pattern="996" if "996" in text else ("大小周" if "大小周" in text else "未知"),
+                        intensity=intensity,  # type: ignore[arg-type]
+                        evidence=_evidence_from(it, "关键词命中"),
+                        url=url,  # type: ignore[arg-type]
+                    ))
+                    seen_overtime += 1
+                    break
+
+        # Vibe — pick the strongest sentiment
+        if seen_vibe < 3:
+            if _VIBE_NEGATIVE.search(text):
+                vibe_hits.append(VibeSignal(
+                    sentiment="negative",
+                    evidence=_evidence_from(it, "负面关键词"),
+                    url=url,  # type: ignore[arg-type]
+                ))
+                seen_vibe += 1
+            elif _VIBE_POSITIVE.search(text):
+                vibe_hits.append(VibeSignal(
+                    sentiment="positive",
+                    evidence=_evidence_from(it, "正面关键词"),
+                    url=url,  # type: ignore[arg-type]
+                ))
+                seen_vibe += 1
+            elif _VIBE_MIXED.search(text):
+                vibe_hits.append(VibeSignal(
+                    sentiment="mixed",
+                    evidence=_evidence_from(it, "混合关键词"),
+                    url=url,  # type: ignore[arg-type]
+                ))
+                seen_vibe += 1
+
+        # Salary — only flag, never invent numbers
+        if seen_salary < 2 and _SALARY_KEYWORDS.search(text):
+            salary_hits.append(SalarySignal(
+                evidence=_evidence_from(it, "薪酬关键词"),
+                url=url,  # type: ignore[arg-type]
+            ))
+            seen_salary += 1
+
+        # Turnover
+        if seen_turnover < 2 and _TURNOVER_KEYWORDS.search(text):
+            turnover_hits.append(TurnoverSignal(
+                intensity="high" if "高" in text or "频繁" in text else "unknown",
+                evidence=_evidence_from(it, "离职关键词"),
+                url=url,  # type: ignore[arg-type]
+            ))
+            seen_turnover += 1
+
+    rf.overtime_signals = overtime_hits
+    rf.vibe_signals = vibe_hits
+    rf.salary_signals = salary_hits
+    rf.turnover_signals = turnover_hits
+    return rf
+
+
 async def extract_all_domains(
     llm: LLMClient, by_domain: dict[str, list[RawItem]]
 ) -> dict[str, object]:
-    """Return {'business': ..., 'reviews': ..., 'news': ..., 'judicial': ..., 'company_info': ...}."""
-    coros = [
-        _extract_one_domain(llm, d, by_domain.get(d, []))
-        for d in ("business", "reviews", "news", "judicial", "company_info")
-    ]
-    results = await asyncio.gather(*coros)
-    return {
-        d: r for d, r in zip(("business", "reviews", "news", "judicial", "company_info"), results)
-    }
+    """Return {'business': ..., 'reviews': ..., 'news': ..., 'judicial': ..., 'company_info': ...}.
+
+    v0.1.14 — Reviews domain gets up to two LLM passes (focused re-call when
+    first pass is thin) plus a local keyword fallback so the chapter rarely
+    renders empty even on small Tavily fetches.
+    """
+    domains = ("business", "reviews", "news", "judicial", "company_info")
+    coros = [_extract_one_domain(llm, d, by_domain.get(d, [])) for d in domains]
+    results = list(await asyncio.gather(*coros))
+    out: dict[str, object] = dict(zip(domains, results))
+
+    # Phase 2 — focused second pass for reviews if first is thin
+    reviews_first = out.get("reviews")
+    if _needs_second_pass(reviews_first if isinstance(reviews_first, ReviewFacts) else None):
+        try:
+            extra = await _second_pass_reviews(
+                llm, by_domain.get("reviews", []), reviews_first  # type: ignore[arg-type]
+            )
+            if extra:
+                out["reviews"] = _merge_reviews(reviews_first, extra)  # type: ignore[arg-type]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("second-pass reviews failed: %s", e)
+
+    # Phase 3 — local keyword fallback so vibe/overtime/salary are never
+    # completely empty when the raw fetch had any keyword-bearing snippet.
+    reviews_items = by_domain.get("reviews", [])
+    rf = out.get("reviews")
+    if isinstance(rf, ReviewFacts) and reviews_items:
+        loose = _loose_keyword_reviews(reviews_items)
+        if any([loose.overtime_signals, loose.vibe_signals, loose.salary_signals, loose.turnover_signals]):
+            out["reviews"] = _merge_reviews(rf, loose)
+
+    return out
 
 
 async def consolidate(

@@ -289,6 +289,8 @@ BUSINESS_DOMAINS: list[str] = [
 
 # Company profile / encyclopedia / startup database sources
 # (主营业务 / 产品 / 行业 / 融资阶段 / 规模 / 官网 etc.)
+# v0.1.14 — expanded: 虎嗅 (huxiu) / 猎云网 (lieyunwang) / 创业家 (chuangsanjia)
+# bring higher-quality profile/financing coverage than the encyclopedias.
 COMPANY_INFO_DOMAINS: list[str] = [
     "baike.baidu.com",
     "baike.sogou.com",
@@ -296,6 +298,9 @@ COMPANY_INFO_DOMAINS: list[str] = [
     "cyzone.cn",
     "pedaily.cn",
     "36kr.com",
+    "huxiu.com",
+    "lieyunwang.com",
+    "chuangsanjia.com",
     "qcc.com",
     "tianyancha.com",
 ]
@@ -400,13 +405,19 @@ def judicial_queries(q: CompanyQuery) -> list[str]:
 
 
 def company_info_queries(q: CompanyQuery) -> list[str]:
-    """Company profile queries (主营业务 / 产品 / 行业 / 融资 / 规模 / 官网)."""
+    """Company profile queries (主营业务 / 产品 / 行业 / 融资 / 规模 / 官网).
+
+    v0.1.14 — added per-source queries targeting 36kr / 虎嗅 since
+    encyclopedias often miss recent financing rounds.
+    """
     c = q.company
     return [
         f'"{c}" 公司简介',
         f'"{c}" 主营业务 产品',
         f'"{c}" 融资 投资',
         f'"{c}" 官网',
+        f'"{c}" site:36kr.com',
+        f'"{c}" site:huxiu.com',
     ]
 
 
