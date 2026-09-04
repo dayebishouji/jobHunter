@@ -280,6 +280,11 @@ main.add_command(run_cmd, name="check")
 
 # ---------- v0.1.17 — watchlist subcommands ----------
 
+@click.group()
+def watch_group() -> None:
+    """管理 watchlist（持久化的关注公司列表）。"""
+
+
 @watch_group.command(name="add")
 @click.option("--company", "-c", required=True, help="公司名")
 @click.option("--position", "-p", default="", help="岗位")
@@ -316,11 +321,6 @@ def watch_remove(company: str) -> None:
         console.print(f"[green]✓[/green] 已移除 {company}")
     else:
         console.print(f"[yellow]{company} 不在 watchlist 中[/yellow]")
-
-
-@click.group()
-def watch_group() -> None:
-    """管理 watchlist（持久化的关注公司列表）。"""
 
 
 main.add_command(watch_group)
