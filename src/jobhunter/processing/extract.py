@@ -384,12 +384,27 @@ async def extract_all_domains(
 
     # Phase 3 — local keyword fallback so vibe/overtime/salary are never
     # completely empty when the raw fetch had any keyword-bearing snippet.
+    # v0.1.23 — Bug fix: previous condition required `isinstance(rf, ReviewFacts)`,
+    # which silently skipped the fallback when the LLM extraction step returned
+    # None (ccswitch moderation, transient API error, or empty tool_use block).
+    # Result: 美的 / 美团 / 字节跳动 all produced empty reviews chapters despite
+    # the raw bucket holding 100+ workplace URLs. Now the fallback runs whenever
+    # there are raw items, regardless of whether the LLM extraction succeeded.
     reviews_items = by_domain.get("reviews", [])
-    rf = out.get("reviews")
-    if isinstance(rf, ReviewFacts) and reviews_items:
+    if reviews_items:
         loose = _loose_keyword_reviews(reviews_items)
-        if any([loose.overtime_signals, loose.vibe_signals, loose.salary_signals, loose.turnover_signals]):
-            out["reviews"] = _merge_reviews(rf, loose)
+        has_loose = any(
+            [loose.overtime_signals, loose.vibe_signals,
+             loose.salary_signals, loose.turnover_signals]
+        )
+        if has_loose:
+            rf = out.get("reviews")
+            if isinstance(rf, ReviewFacts):
+                out["reviews"] = _merge_reviews(rf, loose)
+            else:
+                # LLM extraction failed entirely — use loose as the entire
+                # reviews facet so the chapter at least renders keyword hits.
+                out["reviews"] = loose
 
     return out
 
