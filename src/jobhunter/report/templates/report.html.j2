@@ -714,5 +714,118 @@
 </footer>
 
 </div>
+
+{# === v0.1.12 — Motion polish (去 AI 味) ===
+   Inline JS for scroll-reveal + KPI counter animation. All gated by
+   prefers-reduced-motion. No external deps — preserves single-file portability. #}
+<script>
+(function () {
+  'use strict';
+  var prefersReduced = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- Reveal-on-scroll ----------
+  // Auto-mark top-level sections; stagger axis-ribbon cells + hero side cards.
+  var revealTargets = document.querySelectorAll(
+    '.chapter, .hero, .axis-ribbon, .hero-ring, .hero-radar, .masthead'
+  );
+  var idx = 0;
+  revealTargets.forEach(function (el) {
+    el.classList.add('reveal');
+    if (idx < 4) {
+      el.style.setProperty('--reveal-delay', (idx * 80) + 'ms');
+    }
+    idx++;
+  });
+
+  // ---------- Counter animation on KPI numbers ----------
+  // Axis ribbon numbers (.axis-ribbon-num) — pure integers.
+  // Stat strip values (.stat-val[data-counter]) — may include decimals.
+  var axisNums = document.querySelectorAll('.axis-ribbon-num');
+  axisNums.forEach(function (el) {
+    var raw = el.textContent.trim();
+    var num = parseFloat(raw);
+    if (!isNaN(num)) {
+      el.setAttribute('data-counter', String(num));
+      el.setAttribute('data-counter-decimals', '0');
+      if (!prefersReduced) el.textContent = '0';
+    }
+  });
+  // Stat values with explicit data-counter (set by builder if any)
+  var statVals = document.querySelectorAll('.stat-val[data-counter]');
+  statVals.forEach(function (el) {
+    if (!prefersReduced) {
+      var d = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
+      el.textContent = (0).toFixed(d);
+    }
+  });
+
+  function tickCounter(el) {
+    var target = parseFloat(el.getAttribute('data-counter'));
+    if (isNaN(target)) return;
+    var decimals = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
+    var duration = 700;
+    var start = null;
+    function step(ts) {
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / duration);
+      // easeOutCubic
+      var eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = (target * eased).toFixed(decimals);
+      if (t < 1) {
+        requestAnimationFrame(step);
+      } else {
+        el.textContent = target.toFixed(decimals);
+        el.classList.add('is-countered');
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  if (!('IntersectionObserver' in window)) {
+    // Fallback: just reveal everything + tick to final value
+    revealTargets.forEach(function (el) { el.classList.add('is-visible'); });
+    axisNums.forEach(function (el) {
+      el.textContent = el.getAttribute('data-counter');
+    });
+    statVals.forEach(function (el) {
+      var d = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
+      el.textContent = parseFloat(el.getAttribute('data-counter')).toFixed(d);
+    });
+    return;
+  }
+
+  var revealObs = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        revealObs.unobserve(entry.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -6% 0px', threshold: 0.05 });
+  revealTargets.forEach(function (el) { revealObs.observe(el); });
+
+  // Counter observer — only fires when the number scrolls into view
+  var counterTargets = [].slice.call(axisNums).concat([].slice.call(statVals));
+  if (counterTargets.length) {
+    if (prefersReduced) {
+      counterTargets.forEach(function (el) {
+        var d = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
+        el.textContent = parseFloat(el.getAttribute('data-counter')).toFixed(d);
+      });
+    } else {
+      var counterObs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            tickCounter(entry.target);
+            counterObs.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.4 });
+      counterTargets.forEach(function (el) { counterObs.observe(el); });
+    }
+  }
+})();
+</script>
 </body>
 </html>
