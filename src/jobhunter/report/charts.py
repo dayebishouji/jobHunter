@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from datetime import datetime
 from typing import Iterable
 
 from jobhunter.models.facts import (
@@ -447,6 +448,92 @@ def case_timeline_svg(buckets: list[dict], *, size_w: int = 360, size_h: int = 1
             f'font-family="IBM Plex Mono, monospace" font-size="10" '
             f'fill="{_PALETTE["ink_soft"]}">\'{str(b["year"])[-2:]}</text>'
         )
+    parts.append('</svg>')
+    return "".join(parts)
+
+
+def company_timeline_svg(events: list, *, size_w: int = 480, size_h: int = 96) -> str:
+    """v0.3.3 — Mini horizontal-axis timeline of company milestones.
+
+    Each event is ``{"when": "YYYY" | "—", "label": str}``. Events with a
+    numeric ``when`` are anchored to that year on the axis; events with ``"—"``
+    are placed at the right edge as floating markers (funding / investors
+    typically lack a precise year in the source data).
+
+    Returns "" when ``events`` is empty so callers can ``{% if %}` ``safely.
+    Native ``<title>`` tooltips carry the label — zero JS.
+    """
+    if not events:
+        return ""
+    pad_l, pad_r, pad_t, pad_b = 16, 16, 14, 26
+    inner_w = size_w - pad_l - pad_r
+    axis_y = pad_t + (size_h - pad_t - pad_b) / 2
+
+    # Span from numeric whens; fall back to (now-10, now)
+    numeric_whens: list[int] = []
+    for e in events:
+        w = str(e.get("when", ""))
+        if w.isdigit() and len(w) == 4:
+            try:
+                numeric_whens.append(int(w))
+            except ValueError:
+                pass
+    now_year = datetime.now().year
+    if numeric_whens:
+        start_y = min(numeric_whens)
+        end_y = max(numeric_whens + [now_year])
+    else:
+        start_y, end_y = now_year - 10, now_year
+    if end_y - start_y < 1:
+        end_y = start_y + 1
+    span = end_y - start_y
+
+    parts: list[str] = [
+        f'<svg viewBox="0 0 {size_w} {size_h}" class="company-timeline-svg" '
+        f'xmlns="http://www.w3.org/2000/svg" aria-label="公司画像时间线">'
+    ]
+    # Baseline rule
+    parts.append(
+        f'<line x1="{pad_l}" y1="{axis_y:.2f}" x2="{size_w - pad_r}" y2="{axis_y:.2f}" '
+        f'stroke="{_PALETTE["rule"]}" stroke-width="1"/>'
+    )
+    # 4 year tick labels
+    for i in range(4):
+        yr = start_y + int(round(i * span / 3))
+        x = pad_l + i * inner_w / 3
+        parts.append(
+            f'<text x="{x:.2f}" y="{size_h - 10}" text-anchor="middle" '
+            f'font-family="IBM Plex Mono, monospace" font-size="10" '
+            f'fill="{_PALETTE["ink_faint"]}">\'{str(yr)[-2:]}</text>'
+        )
+
+    # Event dots — place numeric whens on the axis, placeholder whens stack at right
+    placeholder_idx = 0
+    placeholder_count = sum(1 for e in events if not (str(e.get("when", "")).isdigit() and len(str(e.get("when", ""))) == 4))
+    for ev in events:
+        w = str(ev.get("when", ""))
+        label = ev.get("label", "") or ""
+        if w.isdigit() and len(w) == 4:
+            try:
+                yr = int(w)
+            except ValueError:
+                continue
+            ratio = (yr - start_y) / span
+            x = pad_l + max(0.0, min(1.0, ratio)) * inner_w
+        else:
+            # Stack placeholders evenly across the right 35% of the axis
+            slot_w = inner_w * 0.35
+            if placeholder_count > 0:
+                x = pad_l + inner_w * 0.6 + (placeholder_idx / max(1, placeholder_count)) * slot_w
+            else:
+                x = pad_l + inner_w * 0.8
+            placeholder_idx += 1
+        parts.append(
+            f'<circle cx="{x:.2f}" cy="{axis_y:.2f}" r="4" '
+            f'fill="{_PALETTE["accent"]}" stroke="{_PALETTE["paper"]}" stroke-width="1.5">'
+            f'<title>{label}</title></circle>'
+        )
+
     parts.append('</svg>')
     return "".join(parts)
 

@@ -122,6 +122,11 @@
       {% endif %}
     </div>
     <blockquote class="signal-evidence">"{{ s.evidence }}"</blockquote>
+    <div class="signal-evidence-attribution">
+      来源：{% if url_str %}{{ host|replace('www.', '')|replace('m.', '') }}{% endif %}
+      {% if s.published_at %} · {{ s.published_at.strftime('%Y-%m') }}{% endif %}
+      {% if support %} · {{ support.support_count }} 源印证 · {{ support.domains|length }} 域{% endif %}
+    </div>
   </li>
 {%- endmacro %}
 
@@ -187,6 +192,57 @@
   {% endif %}
 {%- endmacro %}
 
+{# v0.3.3 — small inline domain chip for per-chapter source line #}
+{% macro mini_chip(url) -%}
+  {% if url %}
+  <span class="mini-chip">{{ _domain_of(url) }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{# v0.3.3 — render the company timeline SVG (Chapter I inline-viz) #}
+{% macro company_timeline_viz(cp) -%}
+  {% if cp and company_timeline_svg %}
+  <div class="company-timeline">
+    <div class="inline-viz-label">画像时间线</div>
+    {{ company_timeline_svg | safe }}
+    <div class="company-timeline-caption">
+      {{ company_timeline.span_start }} → {{ company_timeline.span_end }} · {{ company_timeline.events|length }} 个关键节点
+    </div>
+  </div>
+  {% endif %}
+{%- endmacro %}
+
+{# v0.3.3 — render an LLM inference card (tail chapter side-section) #}
+{% macro infer_card(claim, grounding_evidence) -%}
+  <div class="infer-card">
+    <div class="infer-card-head">
+      <span class="infer-tag">推断</span>
+      <span class="infer-claim">{{ claim }}</span>
+    </div>
+    {% if grounding_evidence %}
+      {% if grounding_evidence is string %}
+      <div class="infer-evidence">依据：{{ grounding_evidence }}</div>
+      {% elif grounding_evidence is iterable and grounding_evidence|length > 0 %}
+      <div class="infer-evidence">依据：
+        {%- for u in grounding_evidence[:3] %}
+        <a class="mini-chip" href="{{ u }}" target="_blank" rel="noopener">{{ _domain_of(u) }}</a>
+        {%- endfor %}
+      </div>
+      {% endif %}
+    {% endif %}
+  </div>
+{%- endmacro %}
+
+{# v0.3.3 — render the anomaly_listed flag block under Chapter II takeaway #}
+{% macro anomaly_flag(bf) -%}
+  {% if bf and bf.anomaly_listed %}
+  <div class="anomaly-flag">
+    <span class="anomaly-flag-mark">⚠</span>
+    <span class="anomaly-flag-text">曾被列入经营异常名录 — 建议手动核查国家企业信用信息公示系统</span>
+  </div>
+  {% endif %}
+{%- endmacro %}
+
 {# ============================================================
    1. MASTHEAD — research-report header bar
    ============================================================ #}
@@ -209,6 +265,21 @@
   </div>
 </header>
 
+{# v0.3.3 — masthead detail band (A3) #}
+<section class="masthead-detail">
+  <span class="masthead-detail-item"><span class="masthead-detail-key">公司</span><span class="masthead-detail-val">{{ data.query.company }}</span></span>
+  <span class="masthead-detail-sep">·</span>
+  <span class="masthead-detail-item"><span class="masthead-detail-key">岗位</span><span class="masthead-detail-val">{{ data.query.position or '未指定' }}</span></span>
+  <span class="masthead-detail-sep">·</span>
+  <span class="masthead-detail-item"><span class="masthead-detail-key">城市</span><span class="masthead-detail-val">{{ data.query.city or '未指定' }}</span></span>
+  <span class="masthead-detail-sep">·</span>
+  <span class="masthead-detail-item"><span class="masthead-detail-key">日期</span><span class="masthead-detail-val">{{ data.generated_at.strftime('%Y-%m-%d') }}</span></span>
+  <span class="masthead-detail-sep">·</span>
+  <span class="masthead-detail-item"><span class="masthead-detail-key">维度</span><span class="masthead-detail-val">{{ dimensions }}/5</span></span>
+  <span class="masthead-detail-sep">·</span>
+  <span class="masthead-detail-item"><span class="masthead-detail-key">置信度</span><span class="masthead-detail-val">{{ {'high':'高','medium':'中','low':'需核查'}.get(data.overall_confidence, '—') if data.overall_confidence else '—' }}</span></span>
+</section>
+
 {# ============================================================
    2. COVER — investment-thesis block + KPI grid + radar + verdict
    ============================================================ #}
@@ -229,22 +300,35 @@
         <span class="cover-company">{{ data.query.company }}</span>
         <span class="cover-title-dek">一份关于 {{ data.query.company }} 的尽调备忘</span>
       </h1>
-      {% if data.company_profile and (data.company_profile.business_scope or data.company_profile.motto) %}
+      {% if data.company_profile and (data.company_profile.business_scope or data.company_profile.motto or data.company_profile.description) %}
       <p class="cover-summary">
         {% if data.company_profile.motto %}
           <span class="cover-motto">「{{ data.company_profile.motto }}」</span>
+        {% elif data.company_profile.description %}
+          <span class="cover-motto">「{{ data.company_profile.description }}」</span>
         {% endif %}
         {% if data.company_profile.business_scope %}
           <span class="cover-scope">{{ data.company_profile.business_scope }}</span>
         {% endif %}
       </p>
       {% endif %}
+      {% if data.company_profile and data.company_profile.main_business %}
+      <div class="cover-business-strip">
+        {% for mb in data.company_profile.main_business[:4] %}
+        <span class="chip chip-accent">{{ mb }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
 
     {# --- 主编按 editorial aside --- #}
     {% set dispatch_text = edit_notes.get('cover') or v.headline %}
+    {% set cqs = data.findings.company_query_summary if data.findings else none %}
     <aside class="cover-dispatch">
       <span class="cover-dispatch-tag">主编按</span>
+      {% if cqs %}
+      <div class="cover-dispatch-body cover-dispatch-summary">{{ cqs }}</div>
+      {% endif %}
       <div class="cover-dispatch-body">{{ dispatch_text }}</div>
       {% if v.reasons and v.reasons|length > 0 %}
       <ol class="cover-dispatch-reasons">
@@ -255,6 +339,13 @@
       {% endif %}
     </aside>
   </div>
+
+  {# v0.3.3 — A1: cover thesis typographic peak #}
+  {% if v and v.headline %}
+  <div class="cover-thesis">
+    <span class="cover-thesis-quote">{{ v.headline }}</span>
+  </div>
+  {% endif %}
 
   {# --- Mid: 投资要点 (3-5 numbered bullets) --- #}
   <section class="thesis" aria-label="投资要点">
@@ -320,6 +411,27 @@
           典型下班 {{ data.review_facts.typical_off_time }}
         {% else %}
           UGC 真实体感
+        {% endif %}
+      </div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-key">数据多样性</div>
+      <div class="kpi-val mono">{{ diversity_kpi.tier_label_zh if diversity_kpi else '—' }}<span class="kpi-unit"></span></div>
+      <div class="kpi-sub">
+        {% if diversity_kpi and diversity_kpi.total_signals %}
+          {{ diversity_kpi.total_signals }} 信号 · {{ diversity_kpi.distinct_domains|length }} 域
+        {% else %}
+          本次未抓到评价数据
+        {% endif %}
+      </div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-key">已抓取维度</div>
+      <div class="kpi-val mono">{{ dims }}<span class="kpi-unit"> / 5</span></div>
+      <div class="kpi-sub">
+        {% if dims >= 4 %}画像 / 工商 / 评价 / 舆情 / 司法
+        {% elif dims >= 2 %}部分维度缺失
+        {% else %}数据面较薄
         {% endif %}
       </div>
     </div>
@@ -437,28 +549,51 @@
     {{ data.query.company }} 主营 {{ cp.industries[0] if cp.industries else '业务未抓取' }}{% if cp.founded_at %} · 成立 {{ cp.founded_at }}{% endif %}{% if cp.headquarters %} · 总部 {{ cp.headquarters }}{% endif %}
   </div>
 
+  {{ company_timeline_viz(cp) }}
+
   <div class="data-table">
     <div class="data-row">
       <div class="data-cell data-cell-key">主营业务</div>
       <div class="data-cell">{{ cp.business_scope or '—' }}</div>
     </div>
+    {% if cp.official_website %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">官网</div>
+      <div class="data-cell">
+        <a class="field-link" href="{{ cp.official_website }}" target="_blank" rel="noopener">{{ _domain_of(cp.official_website) }} ↗</a>
+      </div>
+    </div>
+    {% endif %}
     <div class="data-row">
       <div class="data-cell data-cell-key">所属行业</div>
       <div class="data-cell">
         {% for ind in cp.industries %}<span class="chip">{{ ind }}</span>{% endfor %}
       </div>
     </div>
+    {% if cp.products %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">产品矩阵</div>
+      <div class="data-cell">
+        <div class="products-grid">
+          {% for p in cp.products %}<span class="chip chip-accent">{{ p }}</span>{% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <div class="data-row">
       <div class="data-cell data-cell-key">员工 / 参保</div>
       <div class="data-cell mono">
         {% if cp.employee_count %}{{ cp.employee_count }} 人{% else %}未披露{% endif %}
         {% if cp.insured_count %} · 参保 {{ cp.insured_count }} 人{% endif %}
+        {% if cp.company_size %} · 公司规模 {{ cp.company_size }}{% endif %}
       </div>
     </div>
-    {% if cp.founded_at %}
+    {% if cp.founded_at or cp.founded_year %}
     <div class="data-row">
       <div class="data-cell data-cell-key">成立</div>
-      <div class="data-cell mono">{{ cp.founded_at }}</div>
+      <div class="data-cell mono">
+        {{ cp.founded_at if cp.founded_at else cp.founded_year }}{% if company_age is not none %} · {{ company_age }} 年{% endif %}
+      </div>
     </div>
     {% endif %}
     {% if cp.headquarters %}
@@ -473,6 +608,12 @@
       <div class="data-cell">{{ cp.funding_stage }}</div>
     </div>
     {% endif %}
+    {% if cp.total_funding %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">累计融资</div>
+      <div class="data-cell mono">{{ cp.total_funding }}</div>
+    </div>
+    {% endif %}
     {% if cp.investors %}
     <div class="data-row">
       <div class="data-cell data-cell-key">主要投资方</div>
@@ -481,6 +622,13 @@
     {% endif %}
   </div>
 
+  {% if cp.prospects %}
+  <div class="prospects-block">
+    <div class="prospects-tag">前景研判</div>
+    <p class="prospects-text">{{ cp.prospects }}</p>
+  </div>
+  {% endif %}
+
   {% else %}
   <div class="chapter-takeaway">
     <span class="chapter-takeaway-tag">未能取得</span>
@@ -488,6 +636,9 @@
   </div>
   {% endif %}
 </section>
+
+{# v0.3.3 — chapter divider (A6) #}
+<div class="chapter-divider">· · ·</div>
 
 {# ============================================================
    II. 工商基本面
@@ -513,6 +664,8 @@
     {% endif %}{% if bf.legal_rep %} · 法人 {{ bf.legal_rep }}{% endif %}{% if bf.registered_capital %} · 注册资本 {{ bf.registered_capital }}{% endif %}
   </div>
 
+  {{ anomaly_flag(bf) }}
+
   <div class="data-table">
     {% if bf.legal_rep %}
     <div class="data-row">
@@ -526,10 +679,30 @@
       <div class="data-cell mono">{{ bf.registered_capital }}</div>
     </div>
     {% endif %}
+    {% if bf.paid_in_capital %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">实缴资本</div>
+      <div class="data-cell mono">{{ bf.paid_in_capital }}</div>
+    </div>
+    {% endif %}
     {% if bf.established_at %}
     <div class="data-row">
       <div class="data-cell data-cell-key">成立时间</div>
       <div class="data-cell mono">{{ bf.established_at }}</div>
+    </div>
+    {% endif %}
+    {% if bf.address %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">注册地址</div>
+      <div class="data-cell">{{ bf.address }}</div>
+    </div>
+    {% endif %}
+    {% if bf.external_investments_count is not none %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">对外投资</div>
+      <div class="data-cell mono">
+        {% if bf.external_investments_count > 0 %}{{ bf.external_investments_count }} 项{% else %}无对外投资{% endif %}
+      </div>
     </div>
     {% endif %}
     {% if bf.status %}
@@ -540,7 +713,7 @@
       </div>
     </div>
     {% endif %}
-    {% if bf.stakeholders and bf.stakeholders|length > 0 %}
+    {% if bf.top_shareholders and bf.top_shareholders|length > 0 %}
     <div class="data-row">
       <div class="data-cell data-cell-key">股东结构</div>
       <div class="data-cell">{{ shareholder_donut_svg | safe }}</div>
@@ -555,6 +728,9 @@
   </div>
   {% endif %}
 </section>
+
+{# v0.3.3 — chapter divider (A6) #}
+<div class="chapter-divider">· · ·</div>
 
 {# ============================================================
    III. 司法风险
@@ -580,7 +756,7 @@
     {% elif (jf.case_count_total or 0) > 0 %}
     <div class="chapter-takeaway chapter-takeaway-bad">
       <span class="chapter-takeaway-tag">警示</span>
-      公开记录发现 {{ jf.case_count_total }} 起诉讼或被执行, 详见下方时间线
+      公开记录发现 {{ jf.case_count_total }} 起诉讼{% if jf.enforcement_records %} · 被执行 {{ jf.enforcement_records }} 条{% endif %}, 详见下方时间线
     </div>
     {% endif %}
 
@@ -608,6 +784,13 @@
     </div>
     {% endif %}
 
+    {% if jf.case_count_recent_year is not none and jf.case_count_recent_year > 0 %}
+    <div class="case-recent-row">
+      近 12 个月：<span class="mono">{{ jf.case_count_recent_year }}</span> 起
+      {% if jf.case_count_total %}{% set prev = jf.case_count_total - jf.case_count_recent_year %}{% if prev > 0 %}· 同比 +{{ jf.case_count_recent_year }}{% endif %}{% endif %}
+    </div>
+    {% endif %}
+
     {% if jf.sample_cases and jf.sample_cases|length > 0 %}
     <div class="case-list">
       {% for c in jf.sample_cases[:5] %}
@@ -629,6 +812,9 @@
   </div>
   {% endif %}
 </section>
+
+{# v0.3.3 — chapter divider (A6) #}
+<div class="chapter-divider">· · ·</div>
 
 {# ============================================================
    IV. 薪酬
@@ -705,7 +891,25 @@
     薪酬数据本次未能取得。可手动到 [看准](https://www.kanzhun.com/) / [脉脉](https://maimai.cn/) / [牛客](https://www.nowcoder.com/) 核查。
   </div>
   {% endif %}
+
+  {% set rf_for_gaps = data.review_facts %}
+  {% if rf_for_gaps and rf_for_gaps.jd_gap_signals %}
+  <div class="side-section">
+    <h3 class="subsection">JD ↔ 现实对照</h3>
+    <div class="jd-gap-list">
+      {% for g in rf_for_gaps.jd_gap_signals[:5] %}
+      <div class="jd-gap-pair">
+        <div class="jd-gap-promise"><span class="jd-gap-tag">JD</span>{{ g.jd_promise }}</div>
+        <div class="jd-gap-reality"><span class="jd-gap-tag jd-gap-tag-real">实际</span>{{ g.reality }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 </section>
+
+{# v0.3.3 — chapter divider (A6) #}
+<div class="chapter-divider">· · ·</div>
 
 {# ============================================================
    V. 团队健康度 — 加班 + 离职
@@ -779,6 +983,9 @@
   {% endif %}
 </section>
 
+{# v0.3.3 — chapter divider (A6) #}
+<div class="chapter-divider">· · ·</div>
+
 {# ============================================================
    VI. 团队氛围与文化
    ============================================================ #}
@@ -822,16 +1029,15 @@
 
   {% if rf.slang_glossary and rf.slang_glossary|length > 0 %}
   <h3 class="subsection">网络词解读</h3>
-  <ul class="slang-list">
+  <div class="slang-wall">
     {% for s in rf.slang_glossary %}
-    <li class="slang-item">
-      <span class="slang-term">{{ s.term }}</span>
-      <span class="slang-meaning">{{ s.meaning }}</span>
-      {% if s.count %}<span class="slang-count mono">{{ s.count }}×</span>{% endif %}
-      {% if s.url %}<a class="slang-link" href="{{ s.url }}" target="_blank" rel="noopener">→</a>{% endif %}
-    </li>
+    <span class="slang-chip" title="{{ s.meaning }}{% if s.url %} — 来源 {{ s.url }}{% endif %}">
+      <span class="slang-chip-mark">{{ s.term[0] }}</span>
+      <span class="slang-chip-term">{{ s.term }}</span>
+      {% if s.count %}<span class="slang-chip-count">· {{ s.count }}×</span>{% endif %}
+    </span>
     {% endfor %}
-  </ul>
+  </div>
   {% endif %}
 
   {% else %}
@@ -841,6 +1047,9 @@
   </div>
   {% endif %}
 </section>
+
+{# v0.3.3 — chapter divider (A6) #}
+<div class="chapter-divider">· · ·</div>
 
 {# ============================================================
    VII. 近期舆情
@@ -1079,7 +1288,14 @@
 
   <div class="side-section">
     <h3 class="subsection">综合推断</h3>
-    {% if v.reasons and v.reasons|length > 0 %}
+    {% set findings = data.findings %}
+    {% if findings and findings.inferences and findings.inferences|length > 0 %}
+    <div class="infer-list">
+      {% for inf in findings.inferences %}
+        {{ infer_card(inf.claim, inf.grounding_evidence) }}
+      {% endfor %}
+    </div>
+    {% elif v.reasons and v.reasons|length > 0 %}
     <ul class="infer-list">
       {% for inf in v.reasons %}
       <li class="infer-item">

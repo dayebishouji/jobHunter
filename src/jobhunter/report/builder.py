@@ -15,6 +15,7 @@ from jobhunter.report.jd_alignment import JdClaim, compute_jd_alignment
 from jobhunter.report.charts import (
     case_timeline_svg,
     case_year_buckets,
+    company_timeline_svg,
     funding_stage_position,
     news_items_for_timeline,
     news_timeline_svg,
@@ -195,6 +196,81 @@ _CONFIDENCE_LABEL = {
     "medium": ("部分缺失",   "conf-medium"),
     "low":    ("需人工核查", "conf-low"),
 }
+
+
+# ---------- v0.3.3 — Company timeline + age ----------
+
+def compute_company_age(founded_year, generated_at: datetime) -> int | None:
+    """v0.3.3 — Return the company's age in years as of generated_at.
+
+    Returns None when founded_year is missing, unparseable, or in the
+    future. Pure deterministic — no LLM.
+    """
+    if founded_year is None:
+        return None
+    try:
+        age = generated_at.year - int(founded_year)
+    except (TypeError, ValueError):
+        return None
+    return age if age >= 0 else None
+
+
+def compute_company_timeline(cp) -> dict | None:
+    """v0.3.3 — Build a deterministic mini-timeline of company milestones for
+    Chapter I inline-viz. Returns None when founded_year is missing.
+
+    Event slots (max 5, oldest → newest):
+      - 0: 成立 (founded_year)
+      - 1: 融资阶段 (if funding_stage_position >= 1)
+      - 2: 投资方 (first 2 names, joined with /)
+      - 3: 至今 (only when span > 2 years)
+
+    Each event: ``{"when": "YYYY" | "—", "label": str}``. The SVG generator
+    (charts.company_timeline_svg) handles layout; this function only emits
+    the data, so templates can also iterate the events for non-SVG fallbacks.
+    """
+    if not cp or cp.founded_year is None:
+        return None
+    try:
+        founded = int(cp.founded_year)
+    except (TypeError, ValueError):
+        return None
+
+    events: list[dict] = [{"when": str(founded), "label": "成立"}]
+
+    pos = funding_stage_position(getattr(cp, "funding_stage", None))
+    if pos >= 1:
+        stage = cp.funding_stage or ""
+        if pos == 5:
+            label = f"已上市 · {stage}" if stage else "已上市"
+        elif pos == 4:
+            label = f"C 轮及以上 · {stage}" if stage else "C 轮及以上"
+        elif pos == 3:
+            label = f"B 轮 · {stage}" if stage else "B 轮"
+        elif pos == 2:
+            label = f"A 轮 · {stage}" if stage else "A 轮"
+        elif pos == 1:
+            label = f"天使轮 · {stage}" if stage else "天使轮"
+        else:
+            label = stage or "融资"
+        events.append({"when": "—", "label": label})
+
+    investors = getattr(cp, "investors", None) or []
+    if investors:
+        names = [str(n).strip() for n in investors[:2] if str(n).strip()]
+        if names:
+            tail = "等" if len(investors) > 2 else ""
+            events.append({"when": "—", "label": "投资方：" + " / ".join(names) + tail})
+
+    now_y = datetime.now().year
+    if now_y - founded > 2:
+        events.append({"when": str(now_y), "label": "至今"})
+
+    return {
+        "events": events[:5],
+        "span_start": founded,
+        "span_end": now_y,
+    }
 
 
 # ---------- v0.1.17 — Salary band (P25 / P50 / P75) ----------
@@ -691,6 +767,16 @@ def build_report(data: ReportData) -> str:
     signal_supports = compute_signal_supports(data.review_facts)
     diversity_kpi = compute_diversity_kpi(data.review_facts, sources)
 
+    # v0.3.3 — Company timeline viz (Chapter I inline)
+    company_timeline = compute_company_timeline(data.company_profile)
+    company_timeline_svg_str = (
+        company_timeline_svg(company_timeline["events"]) if company_timeline else ""
+    )
+    company_age = compute_company_age(
+        getattr(data.company_profile, "founded_year", None) if data.company_profile else None,
+        data.generated_at,
+    )
+
     # v0.1.13 — Editorial aside + variable data stories.
     # Caller may already have populated `data.edit_notes` / `data.data_stories`
     # via LLM; fall back to the deterministic builder path otherwise.
@@ -744,6 +830,9 @@ def build_report(data: ReportData) -> str:
         tier_label=_TIER_LABEL,
         diversity_kpi=diversity_kpi,
         confidence_label=_CONFIDENCE_LABEL,
+        company_timeline=company_timeline,
+        company_timeline_svg=company_timeline_svg_str,
+        company_age=company_age,
         edit_notes=edit_notes,
         data_stories=data_stories,
         industry_key=industry_key,
@@ -753,4 +842,5 @@ def build_report(data: ReportData) -> str:
         overall_verdict=overall_verdict,
         snapshot_diff=snapshot_diff,
         favicon_url=_favicon_url,
+        _domain_of=_domain_of,
     )

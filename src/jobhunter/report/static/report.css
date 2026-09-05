@@ -1622,3 +1622,433 @@ a:hover { color: var(--link-hover); border-bottom-color: var(--link-hover); }
   a { color: #000; border: none; }
   .data-source-note, .cover-foot .source-chip-wall { display: none; }
 }
+
+/* ============================================================
+ * v0.3.3 — Visual refinements (impeccable-grade broker research world)
+ * ============================================================ */
+
+/* A1 — cover thesis (typographic peak) */
+.cover-thesis {
+  max-width: 720px;
+  margin: 32px auto 28px;
+  padding: 18px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  text-align: center;
+}
+.cover-thesis-quote {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 19px;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.5;
+  position: relative;
+}
+.cover-thesis-quote::before,
+.cover-thesis-quote::after {
+  content: '"';
+  font-family: 'Noto Serif SC', serif;
+  font-size: 28px;
+  color: var(--brand);
+  opacity: 0.5;
+  margin: 0 6px;
+  font-style: normal;
+}
+
+/* A2 — KPI grid 5 cells (responsive) */
+@media (min-width: 1200px) {
+  .kpi-grid { grid-template-columns: repeat(5, 1fr); }
+}
+@media (min-width: 720px) and (max-width: 1199px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .kpi-cell:nth-child(4) { border-top: 1px solid var(--rule); }
+  .kpi-cell:nth-child(5) { border-top: 1px solid var(--rule); }
+}
+@media (max-width: 719px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .kpi-cell { border-right: none; border-bottom: 1px solid var(--rule); }
+  .kpi-cell:last-child { border-bottom: none; }
+}
+
+/* A3 — masthead detail band */
+.masthead-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: center;
+  padding: 10px 28px;
+  background: var(--paper-deep);
+  border-bottom: 1px solid var(--rule);
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.masthead-detail-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.masthead-detail-key {
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+.masthead-detail-val {
+  color: var(--ink);
+  font-weight: 500;
+}
+.masthead-detail-sep {
+  color: var(--ink-faint);
+  margin: 0 -10px;
+}
+
+/* A4 — cover-dispatch editorial upgrade */
+.cover-dispatch {
+  background: var(--paper-deep);
+  padding: 16px 20px;
+  border-radius: 4px;
+}
+.cover-dispatch-tag {
+  font-family: 'Noto Serif SC', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--brand);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+.cover-dispatch-body {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.cover-dispatch-summary {
+  font-style: italic;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--rule-soft);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+.cover-dispatch-reasons {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+.cover-dispatch-reasons li { margin-bottom: 3px; }
+
+/* A5 — signal evidence (hanging quote + attribution) */
+.signal-evidence {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 15px;
+  font-style: normal;
+  line-height: 1.55;
+  color: var(--ink);
+  margin: 8px 0 6px;
+  padding-left: 24px;
+  position: relative;
+  text-indent: 0;
+}
+.signal-evidence::before {
+  content: '"';
+  position: absolute;
+  left: 0;
+  top: -4px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 36px;
+  color: var(--brand);
+  opacity: 0.45;
+  line-height: 1;
+  font-style: normal;
+}
+.signal-evidence-attribution {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 11px;
+  color: var(--ink-faint);
+  padding-left: 24px;
+  margin-top: 2px;
+}
+
+/* A6 — chapter divider (· · ·) */
+.chapter-divider {
+  text-align: center;
+  padding: 18px 0 4px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 16px;
+  color: var(--ink-faint);
+  letter-spacing: 0.6em;
+  user-select: none;
+}
+
+/* A7 — slang wall (compact chip wall) */
+.slang-wall {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0 4px;
+}
+.slang-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--paper-card);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 12px;
+  color: var(--ink);
+  cursor: default;
+  transition: border-color 160ms ease-out, transform 160ms ease-out;
+}
+.slang-chip:hover {
+  border-color: var(--brand);
+  transform: translateY(-1px);
+}
+.slang-chip-mark {
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 700;
+  color: var(--brand);
+  font-size: 13px;
+}
+.slang-chip-count {
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+/* A8 — side-section visual frame (1px max per craft-floor) */
+.side-section {
+  border-left: 1px solid var(--brand);
+  padding-left: 14px;
+  margin: 24px 0;
+  position: relative;
+}
+.side-section-tag {
+  position: absolute;
+  top: -10px;
+  left: 8px;
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--brand);
+  background: var(--paper);
+  padding: 0 6px;
+}
+
+/* B1.x field rendering helpers */
+.cover-business-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.products-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.field-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid var(--brand);
+  border-radius: 12px;
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 12px;
+  color: var(--brand);
+  text-decoration: none;
+  background: var(--paper-card);
+  transition: background 160ms ease-out;
+}
+.field-link:hover {
+  background: var(--brand-soft);
+  text-decoration: none;
+  color: var(--brand);
+}
+.mini-chip {
+  display: inline-block;
+  padding: 1px 7px;
+  margin: 0 4px 0 0;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 10px;
+  color: var(--ink-soft);
+  background: var(--paper);
+}
+.prospects-block {
+  margin: 18px 0 8px;
+  padding: 12px 16px;
+  background: var(--paper-card);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+}
+.prospects-tag {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brand);
+  margin-bottom: 6px;
+}
+.prospects-text {
+  font-family: 'Noto Serif SC', serif;
+  font-style: italic;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* B2 — company timeline container */
+.company-timeline {
+  margin: 16px 0;
+  padding: 14px 16px;
+  background: var(--paper-card);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+}
+.company-timeline-svg { display: block; width: 100%; height: auto; max-height: 96px; }
+.company-timeline-caption {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 6px;
+  text-align: center;
+}
+
+/* B3 — anomaly flag */
+.anomaly-flag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: #f7e0dc;
+  border: 1px solid #e8b9b1;
+  border-radius: 4px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 13px;
+  color: var(--bad);
+}
+.anomaly-flag-mark {
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+/* B5 — case recent row */
+.case-recent-row {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* B4 — jd gap list */
+.jd-gap-list {
+  display: grid;
+  gap: 10px;
+  padding: 8px 0;
+}
+.jd-gap-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--paper-card);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+}
+.jd-gap-promise,
+.jd-gap-reality {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.jd-gap-tag {
+  display: inline-block;
+  flex-shrink: 0;
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.jd-gap-tag-real {
+  background: #f7e0dc;
+  color: var(--bad);
+}
+
+/* B6 — infer card */
+.infer-card {
+  margin: 8px 0;
+  padding: 12px 14px;
+  background: var(--paper-card);
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+}
+.infer-card-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.infer-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #f5e8d3;
+  color: var(--mid);
+  border-radius: 8px;
+}
+.infer-claim {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.infer-evidence {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 11px;
+  color: var(--ink-faint);
+  padding-left: 14px;
+}
+
+/* Dark mode overrides for new components */
+@media (prefers-color-scheme: dark) {
+  .cover-thesis { border-color: var(--rule); }
+  .masthead-detail { background: #252525; border-color: var(--rule); }
+  .anomaly-flag { background: #3a1f1d; border-color: #6a2522; }
+  .case-recent-row,
+  .prospects-block,
+  .company-timeline,
+  .jd-gap-pair,
+  .infer-card { background: #252525; border-color: var(--rule); }
+  .jd-gap-tag-real { background: #3a1f1d; color: #e8a8a0; }
+  .slang-chip { background: #252525; border-color: var(--rule); }
+  .side-section-tag { background: var(--paper); }
+}
