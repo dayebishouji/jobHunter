@@ -442,6 +442,10 @@ async def consolidate(
         # Bump output budget — the consolidation writes a sizable inferences list
         # (each with grounding_evidence URLs) and easily exceeds the default 4K.
         max_tokens=8000,
+        # v0.2.1 — strict retry: cross-domain synthesis is the single most
+        # valuable LLM call in the pipeline; a transient API blip shouldn't
+        # drop the whole inferences block to a facets fallback.
+        retry_policy="strict",
     )
     if not raw:
         # Best-effort: stub from raw inputs

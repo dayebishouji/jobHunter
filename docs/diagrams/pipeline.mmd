@@ -1,0 +1,176 @@
+flowchart LR
+    %% ============================================================
+    %% jobHunter end-to-end pipeline (v0.2.0)
+    %% ============================================================
+
+    %% ---- Phase 1: CLI entry ----
+    subgraph CLI["Phase 1 · CLI 入口"]
+        direction TB
+        A1["交互模式<br/>InquirerPy"]:::client
+        A2["非交互<br/>Click · -c/-p/--city<br/>--jd · --compare · --print"]:::client
+        A3["watch add/list/remove<br/>(独立子命令)"]:::client
+    end
+
+    %% ---- Phase 2: Setup ----
+    subgraph SETUP["Phase 2 · Query 准备"]
+        direction TB
+        B1["Watchlist mark_ran<br/>(if in watchlist)"]:::handler
+        B2["list_company_aliases<br/>LLM · 最多 3 别名<br/>失败 → 主名"]:::handler
+        B3["list_workplace_slang<br/>LLM · 5-8 个<br/>内卷/ICU/摆烂/PUA"]:::handler
+        B4["构造 CompanyQuery<br/>+ aliases + slang_queries"]:::storage
+    end
+
+    %% ---- Phase 3: Round 1 collectors ----
+    subgraph R1["Phase 3 · Round 1 — 8 collectors 并发"]
+        direction TB
+        C1["GSXT<br/>国家企业信用"]:::svc
+        C2["Tavily Business"]:::svc
+        C3["Wenshu<br/>裁判文书"]:::svc
+        C4["Tavily Judicial"]:::svc
+        C5["Tavily CompanyInfo"]:::svc
+        C6["Tavily Reviews"]:::svc
+        C7["Tavily News"]:::svc
+        C8["Sogou Weixin<br/>公众号文章"]:::svc
+    end
+
+    %% ---- Phase 4: Round 2 conditional ----
+    subgraph R2["Phase 4 · Round 2 — 实体别名递归"]
+        direction TB
+        D1{"reviews 命中<br/>且 budget_ok?"}:::decision
+        D2["list_company_entities<br/>LLM · 3-5 个<br/>产品/品牌/部门/创始人"]:::handler
+        D3["fresh = 实体 - 已知别名"]:::storage
+        D4["同名 8 collectors<br/>再跑一次<br/>硬上限 1 轮 / 5 实体"]:::svc
+    end
+
+    %% ---- Phase 5: Normalize ----
+    subgraph NORM["Phase 5 · Normalize"]
+        direction TB
+        E1["bucket by domain<br/>reviews/news/business<br/>judicial/company_info"]:::svc
+        E2["REVIEW_URL_PATTERNS<br/>非职场 URL 过滤"]:::svc
+        E3["_dedup_by_url<br/>HTTP normalize<br/>title 去重"]:::svc
+    end
+
+    %% ---- Phase 6: Extract ----
+    subgraph EX["Phase 6 · Extract per domain (LLM 并发)"]
+        direction TB
+        F1["business<br/>EXTRACT_BUSINESS_SUFFIX"]:::handler
+        F2["judicial<br/>EXTRACT_JUDICIAL_SUFFIX"]:::handler
+        F3["company_info<br/>EXTRACT_COMPANY_PROFILE_SUFFIX"]:::handler
+        F4["news<br/>EXTRACT_NEWS_SUFFIX"]:::handler
+        F5["reviews<br/>EXTRACT_REVIEWS_SUFFIX"]:::handler
+        F6{"_needs_second_pass<br/>≥3 signal 且 ≤2 types?"}:::decision
+        F7["_second_pass_reviews<br/>聚焦 missing types<br/>LLM 再抽"]:::handler
+        F8["_loose_keyword_reviews<br/>本地关键词兜底<br/>996/内卷/PUA/月薪<br/>零 LLM 调用"]:::handler
+        F9["_merge_reviews<br/>按 URL 去重"]:::svc
+    end
+
+    %% ---- Phase 7: Consolidate ----
+    subgraph CONS["Phase 7 · Consolidate (1 LLM 调用)"]
+        direction TB
+        G1["CONSOLIDATE_SYSTEM<br/>+ USER_TEMPLATE"]:::handler
+        G2["structured_call<br/>max_tokens=8000<br/>tool_name=aggregate"]:::handler
+        G3{"model_validate<br/>成功?"}:::decision
+        G4["fallback:<br/>AggregatedFindings =<br/>raw facets (best-effort)"]:::fail
+    end
+
+    %% ---- Phase 8: Compute ----
+    subgraph CMP["Phase 8 · Compute (deterministic 并发)"]
+        direction TB
+        H2["compute_axes<br/>5 轴 1-5 星"]:::compute
+        H10["compute_overall_verdict<br/>recommend/caution<br/>/avoid/neutral"]:::compute
+        H4["_gen_interview_questions<br/>LLM · fact-driven<br/>去重合并 · 前置插入"]:::handler
+        H6["compute_salary_band<br/>P25/P50/P75"]:::compute
+        H_MISC["其他 deterministic compute (并行)<br/>• detect_salary_conflicts + all_notes<br/>• _compute_confidence (per-chapter)<br/>• extract_collector_notes<br/>• diff_snapshots (vs 上次)<br/>• compute_chapter_stories (编辑手记)<br/>• compute_signal_supports (4 级 tier)<br/>• compute_trial_checklist (1mo/3mo/6mo)"]:::compute
+    end
+
+    %% ---- Phase 9: Peer comparison (conditional) ----
+    subgraph PEER["Phase 9 · 同行业对比 (仅 --compare)"]
+        direction TB
+        I1["Semaphore(2)<br/>限流"]:::gateway
+        I2["_build_peer_summary<br/>extract + scoring only<br/>(跳过别名/slang/round-2<br/>consolidate/interview Qs)"]:::svc
+        I3["× N peers<br/>(asyncio.Semaphore(2))"]:::storage
+    end
+
+    %% ---- Phase 10: Build report ----
+    subgraph RPT["Phase 10 · Build Report"]
+        direction TB
+        J1["build_report<br/>Jinja2 模板"]:::gateway
+        J2["7 编号章节<br/>公司画像/工商/司法<br/>薪酬/加班/氛围/舆情"]:::svc
+        J3["4 侧栏章节<br/>面试准备/同行业对比<br/>JD 对照/tail"]:::svc
+        J4["risk-callout<br/>+ Σ 来源附录"]:::svc
+    end
+
+    %% ---- Phase 11: Output ----
+    subgraph OUT["Phase 11 · 输出 + 持久化"]
+        direction TB
+        K1["reports/<br/>{slug}-{YYYYMMDD-HHMM}.html<br/>单文件可移植"]:::storage
+        K2["snapshot.save<br/>platformdirs cache<br/>/snapshots/{slug}/..."]:::storage
+        K3["watchlist.mark_ran<br/>更新 last_run_at"]:::storage
+        K4["open_browser / --print<br/>?print=1 → window.print()"]:::client
+    end
+
+    %% ---- Edges ----
+    A1 --> B1
+    A2 --> B1
+    A1 --> B3
+    A2 --> B3
+    A2 --> B2
+    A1 --> B2
+    A3 -.-> K3
+
+    B1 --> B4
+    B2 --> B4
+    B3 --> B4
+
+    B4 --> C1 & C2 & C3 & C4 & C5 & C6 & C7 & C8
+
+    C6 --> D1
+    C7 --> D1
+    D1 -- "yes" --> D2 --> D3 --> D4
+    D1 -- "no / budget<br/>exhausted" --> E1
+
+    C1 & C2 & C3 & C4 & C5 & C6 & C7 & C8 --> E1
+    D4 --> E1
+
+    E1 --> E2 --> E3
+
+    E3 --> F1 & F2 & F3 & F4 & F5
+    F5 --> F6
+    F6 -- "thin" --> F7 --> F9
+    F6 -- "rich" --> F8
+    F7 --> F8
+    F8 --> F9
+
+    F1 & F2 & F3 & F4 --> G1
+    F9 --> G1
+
+    G1 --> G2 --> G3
+    G3 == "✅ ok" ==> H1
+    G3 == "❌ fail" ==> G4:::fail
+    G4 -.->|"AggregatedFindings = raw facets<br/>(best-effort · 整个 run 不挂)"| H1
+
+    H1 --> H2 & H3 & H4 & H5
+    H4 --> H6 & H7 & H8 & H9 & H10 & H11
+
+    H4 -.-> I1
+    I1 --> I2 --> I3
+    I3 --> J1
+
+    H2 & H_MISC & H6 & H10 --> J1
+
+    J1 --> J2 & J3 & J4
+    J2 & J3 & J4 --> K1
+
+    J1 --> K2
+    J1 --> K3
+    J1 --> K4
+
+    %% ---- Class definitions (semantic palette) ----
+    classDef client fill:#e8f5e9,stroke:#2e7d32,color:#1a1a1a
+    classDef gateway fill:#e3f2fd,stroke:#1a3a6e,color:#1a1a1a
+    classDef svc fill:#f5f5f5,stroke:#5a5a5a,color:#1a1a1a
+    classDef handler fill:#f3e5f5,stroke:#6a1b9a,color:#1a1a1a
+    classDef compute fill:#ede7f6,stroke:#5e35b1,color:#1a1a1a
+    classDef storage fill:#fff8e1,stroke:#b8854a,color:#1a1a1a
+    classDef decision fill:#fff,stroke:#b8854a,color:#1a1a1a
+    classDef fail fill:#ffebee,stroke:#c62828,color:#1a1a1a

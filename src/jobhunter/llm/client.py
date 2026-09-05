@@ -139,11 +139,17 @@ class LLMClient:
         tool_schema: dict[str, Any],
         model: str | None = None,
         max_tokens: int | None = None,
+        retry_policy: str = "default",
     ) -> dict[str, Any]:
         """Send the user message, force the named tool call, and return the parsed input dict.
 
         On budget exhaustion: returns `{}` without calling the API.
         On a normal completion: returns the tool's input as a dict.
+
+        `retry_policy`:
+          - "default" — uses `llm_retry()` (3 attempts, 1-10s backoff)
+          - "strict"  — uses `llm_retry_strict()` (≥3 attempts, 1-20s backoff)
+            Use for cross-domain synthesis where fallback can't reproduce the value.
         """
         if not self.budget_ok():
             logger.warning("LLM budget exhausted; returning empty result for %s", tool_name)
@@ -167,7 +173,12 @@ class LLMClient:
         async def _do_call() -> Any:
             return await self._client.messages.create(**kwargs)
 
-        response = await self._retry(_do_call)
+        if retry_policy == "strict":
+            from jobhunter.utils.retry import llm_retry_strict as _strict_retry
+            retry = _strict_retry(self._settings)
+        else:
+            retry = self._retry
+        response = await retry(_do_call)
 
         # Bookkeeping
         self._tokens_in += response.usage.input_tokens

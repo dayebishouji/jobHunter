@@ -11,7 +11,7 @@
 ```bash
 .venv/Scripts/python.exe -m jobhunter run -c "阿里云" -p "后端" --city "杭州" --no-open
 scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动器（等价上面，自动 --no-open）
-.venv/Scripts/python.exe -m pytest                       # 445 tests
+.venv/Scripts/python.exe -m pytest                       # 459 tests
 ```
 
 `.env` 在 `e:\project\jobHunter\.env`（`ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL` 可选走 ccswitch 中转 + `TAVILY_API_KEY`）。
@@ -33,7 +33,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - 不要碰 `reports/` 目录内容（gitignore）。
 - `scripts/regen_sample.py` 仅用于离线重生成示例，**不**作为正式入口。
 
-## 当前边界（v0.2.0）
+## 当前边界（v0.2.1）
 
 - gsxt / wenshu 在非 CN IP 下**软失败**（不抛异常，UI 提示手动核查）
 - ccswitch 中转的 LLM 会把单元素 list 包成 `{"item": [...]}`（OpenAPI 3.1 风格），已由 `NullTolerantListBase` 自动 unwrap；v0.1.4 起还把任何非 list 标量也 coerce 成 `[]`
@@ -74,6 +74,7 @@ scripts/run.bat -c "阿里云" -p "后端"                        # 一键启动
 - v0.1.22 hotfix 修 reviews 域**核心域被静默截断** bug：`domains_for_position(position)` 会按岗位关键词 union 出 20+ 个 domain，但 `MAX_DOMAINS_PER_RUN=15` 把后半截（小红书 / 知乎 / 微博 / 看准 / 牛客 / 1point3acres / v2ex / zhipin / tieba / 抖音 / 快手 这类用户最常搜的 UGC 平台）整个砍掉，等于 reviews 章只搜了小众垂类；现在 `review_queries()` 把 `GENERAL_REVIEW_DOMAINS`（20 个 A 级全行业平台）从 cap 里 carve 出来**永远查**，truncation 只作用于 vertical extras（程序员 / 跨境 / 医护 / 游戏等专属域），单公司 query 数 30 → 40（20 GENERAL × 2 names）。调整 5 个 v0.1.18 contract 测试断言（`tests/test_query_templates.py` + `tests/test_v018_features.py` 的 30→40 pairs 计数），427 → 443 pass
 - v0.1.23 修 reviews 章 LLM 抽取失败时**兜底逻辑被静默跳过** bug：`extract_all_domains` phase 3 的 `_loose_keyword_reviews()` 兜底原本被 `isinstance(rf, ReviewFacts)` 卡住 — 当 LLM 抽取步骤返回 `None`（ccswitch 审核拦截 / 瞬时 API 错误 / 空 tool_use block）时，`rf` 是 None → `isinstance` 为 False → 兜底**永不执行**，最终 reviews 章空即使 raw bucket 有 100+ 职场 URL。美的 / 美团 / 字节跳动 三次实测都中招。现在去掉 isinstance 闸门：只要 reviews_items 非空就跑兜底，LLM 失败时直接用 loose 结果作为整个 facet，LLM 有结果时 merge 两者；`extract.py:phase 3` 12 行 diff。测试 +3 (`tests/test_v0123_features.py` 全过：LLM-None 兜底 / 薄结果合并 / 空 snippets 不污染)，443 → 446 pass
 - v0.2.0 视觉 + 内容双重重写（broker research + 招股书 hybrid 世界）：(1) **方向契约** (THESIS / OWN-WORLD / STORY / FIRST VIEWPORT / FORM+FINISH) 锁死在 `report.html.j2` 顶部；(2) **报告结构全量 redesign** — masthead → cover（top thesis 摘要 + KPI + viz + foot）+ 7 个编号章节（I-VII：公司画像 / 工商 / 司法 / 薪酬 / 加班 / 氛围 / 舆情）+ 4 个侧栏章节（面试准备 / 同行业对比 / JD 对照 / tail 推断 / 缺口 / Σ 来源）+ 风险提示 + Σ 来源附录 + footer；(3) **视觉世界**：券商深度研报 + 招股书 hybrid — paper-cream `#fbfaf6` + paper-deep `#f1ece0` + ink `#1a1a1a` + broker-blue `#1a3a6e` + good `#2e7d32` + bad `#c62828` + mid `#b8854a`；Noto Serif SC（display + body）+ Noto Sans SC（UI）+ Noto Sans Mono（数据）；(4) **内容密度** — 修复 hero 留白、章节 body 薄弱、新增 2 个章节类型（Σ 来源附录、风险提示），章节内插 .inline-viz 微型可视化（薪酬 band / 时间线 / 雷达 SVG）；(5) **覆盖 8 类 token**：编辑手记（story-block / edit-note / data-story）+ 数据多样性 KPI + JD 对照 15 类 + 信号新鲜度 + 历史快照 diff + 试用期观察清单 + 面试反问 + 风险提示；(6) **collector-notes** 横幅只在 sogou_weixin / gsxt / wenshu 三类软失败时出现（v0.2.0 加 gating）；(7) **drag-reorder** JS 仍生效但去掉可见 drag-handle（research-report chrome 更克制）；(8) **DESIGN.md** 新文件按 impeccable skill 要求产出；(9) **`.editorconfig / pyproject.toml`** 同步 bump 至 0.2.0。调整 21 个测试断言匹配新结构（test_report_builder / test_v0120 / test_v0121 / test_v0122 / test_v013 / test_v014 / test_v015 / test_v016 / test_v017），445 → 445 pass
+- v0.2.1 落实 `docs/audits/2026-09-05-pipeline-flow-audit.md` 顶 3 推荐：(1) **consolidate LLM 调用加 tenacity 重试** — 之前 `llm_retry()` 只捕 `httpx.TransportError` / `ConnectionError` / `TimeoutError`，5xx / 429 / 529 一闪即触发 `consolidate` fallback 丢跨域 inferences 块；现在 `anthropic.APIError`（覆盖所有子类 `APIConnectionError` / `APIStatusError` / `RateLimitError` / `APITimeoutError`）也进 retry tuple（`utils/retry.py:llm_retry`）。`consolidate()` 进一步 opt-in `retry_policy="strict"`（≥3 尝试，max 20s backoff，`llm_retry_strict` 新函数）；`LLMClient.structured_call()` 新增 `retry_policy: str = "default"` 参数；(2) **流程图视觉强化 fallback 路径** — `pipeline.mmd` consolidate 失败的 G3→G4 边改 `==>`（粗箭头）+ `:::fail` classDef 红色填充 + edge label "AggregatedFindings = raw facets (best-effort · 整个 run 不挂)"；(3) **流程图节点折叠** — 3 个 `_build_peer_summary` 节点合 1 + "× N peers" 注脚；11 个 compute 盒按角色合 4 独立 + 1 合并盒（H_MISC 含 7 个：conflicts / confidence / collector_notes / snapshot_diff / edit_notes / signal_supports / trial_checklist）；最终渲染 7936×1848, 4.29:1 宽屏；(4) `docs/audits/2026-09-05-pipeline-flow-audit.md` 新文件 — 6 节覆盖 diagram-level (5 项) / pipeline-level (6 项) / product-level (2 项) + 推荐优先级。测试 +14 (`tests/test_v0201_retry.py` 全过：6 异常类型 parametrize retry-actually-works + APIError parent source-check + strict ≥ default attempts + consolidate 源用 strict + structured_call signature + default 走 self._retry + 2 个 tenacity 真重试/超限 reraise），445 → 459 pass
 - 用户的两个深度建议记入「下次接手」：**1.** 行业路由（不是岗位路由） — LLM 先判公司行业再选数据源；当前 `domains_for_position()` 是位置路由的妥协，**做全行业路由需要一次额外 LLM 调用**。**2.** 3 级证据等级（用户主张 / 多源重复出现 / 有公开证据证实） — 当前 `support_tier`（unverified / single-source / corroborated / multi-domain）已经在做类似分级，命名差异可对齐，详见 [src/jobhunter/report/builder.py:compute_signal_supports](src/jobhunter/report/builder.py)
 - 公司画像（company_info 域）从百度百科 / IT 桔子 / 创业邦 / 投资界 / 企查查 / 天眼查 拿，靠 Tavily allowlist；缺数据时报告 section 仅展示已抓到的字段
 

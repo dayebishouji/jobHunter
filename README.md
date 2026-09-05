@@ -78,7 +78,7 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 445 tests
+pytest                        # 459 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
@@ -108,6 +108,7 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.22 hotfix 修 reviews 核心域被静默截断**：`domains_for_position()` 在后端等岗位下 union 出 23 个 domain，但 `MAX_DOMAINS_PER_RUN=15` 把后 8 个（小红书 / 知乎 / 微博 / 看准 / 牛客 / 1point3acres / v2ex / zhipin — 用户最常搜的 UGC 平台）整段砍掉，等于 reviews 章只搜了程序员垂类。`review_queries()` 现在把 `GENERAL_REVIEW_DOMAINS`（20 个 A 级全行业）从 cap 里 carve 出来永远查，truncation 只作用于 vertical extras，单公司 query 30 → 40。测试 +16 (调整 5 个 v0.1.18 contract 断言)，427 → 443 pass
 - **v0.1.23 修 reviews 章 LLM 抽取失败时兜底被跳过**：v0.1.14 加的 `_loose_keyword_reviews()` 兜底原本被 `isinstance(rf, ReviewFacts)` 卡住 — LLM 抽取返回 `None` 时 `rf=None` → isinstance=False → 兜底永不执行，reviews 章空即使 raw bucket 有 100+ 职场 URL。美的 / 美团 / 字节跳动三次实测都中招（cache 显示 157 个 牛客/脉脉/知乎/看准 URL 进 reviews bucket，但报告全空）。现在去掉 isinstance 闸门：reviews_items 非空就一定跑兜底，LLM 失败时直接用 loose 作为整个 facet，LLM 有结果时 merge。测试 +3，443 → 446 pass
 - **v0.2.0 视觉 + 内容双重重写（broker research + 招股书 hybrid）**：报告结构 redesign — masthead → cover 摘要（top thesis 句 + KPI 带 + 5 轴雷达 + snapshot diff + 来源 chip wall + collector soft-fail 横幅）+ 7 个编号章节（I-VII：公司画像 / 工商 / 司法 / 薪酬 / 加班 / 氛围 / 舆情）+ 4 个侧栏章节（面试准备 / 同行业对比 / JD 对照 / tail 推断 / 缺口 / Σ 来源）+ 风险提示 + Σ 来源附录 + footer。视觉 token：paper-cream `#fbfaf6` + broker-blue `#1a3a6e` + Noto Serif SC（display）/ Sans SC（UI）/ Mono（数据）。`DESIGN.md` 是 token 单一来源，`report.html.j2` 顶部 5 段方向契约是设计回归门。`compute_chapter_stories` / `compute_axes` / `compute_overall_verdict` / `compute_trial_checklist` / `compute_salary_band` / `diff_snapshots` 全部 deterministic + 纯本地，零 LLM 调用。`--version` 输出 `0.2.0`。测试调整 21 个断言匹配新结构（test_report_builder + test_v0120/121/122/013/014/015/016/017），446 → 445 pass
+- **v0.2.1 落实 `docs/audits/2026-09-05-pipeline-flow-audit.md` 顶 3 推荐**：(1) **consolidate LLM 调用加 tenacity 重试** — 之前 `llm_retry()` 只捕 `httpx.TransportError` / `ConnectionError` / `TimeoutError`，5xx / 429 / 529 一闪即触发 consolidate fallback 丢跨域 inferences 块；现在 `anthropic.APIError`（覆盖所有子类 `APIConnectionError` / `APIStatusError` / `RateLimitError` / `APITimeoutError`）也进 retry tuple。`consolidate()` 进一步 opt-in `retry_policy="strict"`（≥3 尝试，max 20s backoff，`llm_retry_strict` 新函数）；`LLMClient.structured_call()` 新增 `retry_policy: str = "default"` 参数。(2) **流程图视觉强化 fallback 路径** — `pipeline.mmd` consolidate 失败的 G3→G4 边改 `==>`（粗箭头）+ `:::fail` classDef 红色填充 + edge label "AggregatedFindings = raw facets (best-effort · 整个 run 不挂)"。(3) **流程图节点折叠** — 3 个 `_build_peer_summary` 节点合 1 + "× N peers" 注脚；11 个 compute 盒按角色合 4 独立 + 1 合并盒（H_MISC 含 7 个：conflicts / confidence / collector_notes / snapshot_diff / edit_notes / signal_supports / trial_checklist）；最终渲染 7936×1848, 4.29:1 宽屏。(4) `docs/audits/2026-09-05-pipeline-flow-audit.md` 新文件 — 6 节覆盖 diagram-level (5 项) / pipeline-level (6 项) / product-level (2 项) + 推荐优先级。测试 +14 (`tests/test_v0201_retry.py` 全过)，445 → 459 pass
 - 不支持：批量多公司（watch 已有 CRUD，批跑未做）、Web 服务、Playwright
 
 ## 下次接手可考虑的深度改动
