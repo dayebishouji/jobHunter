@@ -1,5 +1,6 @@
 """LLM layer — Anthropic wrapper, Chinese prompts, tool schemas."""
 
+from jobhunter.llm.cache import LLMResponseCache
 from jobhunter.llm.client import (
     LLMClient,
     list_company_aliases,
@@ -36,6 +37,7 @@ __all__ = [
     "INTERVIEW_SYSTEM",
     "INTERVIEW_USER_TEMPLATE",
     "LLMClient",
+    "LLMResponseCache",
     "extract_tool_spec",
     "list_company_aliases",
     "list_company_entities",

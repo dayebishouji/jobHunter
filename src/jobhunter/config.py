@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     budget_tokens_per_run: int = Field(default=200_000, ge=10_000)
 
     cache_ttl_hours: int = Field(default=24, ge=1)
+    llm_cache_enabled: bool = Field(
+        default=True,
+        description="v0.2.2 — Enable disk cache for structured_call responses. "
+        "Set false via JOBHUNTER_LLM_CACHE_ENABLED=false to bypass.",
+    )
     tavily_max_results: int = Field(default=10, ge=1, le=20)
     tavily_search_depth: str = Field(default="advanced", pattern="^(basic|advanced)$")
     tavily_rate_per_sec: float = Field(default=2.0, gt=0)

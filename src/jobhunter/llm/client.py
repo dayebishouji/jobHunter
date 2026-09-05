@@ -9,6 +9,7 @@ from typing import Any
 import anthropic
 
 from jobhunter.config import Settings
+from jobhunter.llm.cache import LLMResponseCache
 from jobhunter.utils.retry import llm_retry as _retry_builder
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,12 @@ class LLMClient:
         self._tokens_out = 0
         self._budget_blocked = False
         self._retry = _retry_builder(settings)
+        # v0.2.2 — disk-backed cache for structured_call responses. Default ON;
+        # disable via JOBHUNTER_LLM_CACHE_ENABLED=false in .env.
+        self._cache = LLMResponseCache(
+            ttl_hours=settings.cache_ttl_hours,
+            enabled=settings.llm_cache_enabled,
+        )
 
     # ---------- bookkeeping ----------
 
@@ -155,6 +162,15 @@ class LLMClient:
             logger.warning("LLM budget exhausted; returning empty result for %s", tool_name)
             return {}
 
+        # v0.2.2 — cache check BEFORE constructing the LLM kwargs. A hit skips
+        # the entire API call (no tokens_in/out charged, no retry). Cache key
+        # includes system + user + tool_name so different extraction schemas
+        # or models don't collide.
+        cached = self._cache.get(system, user, tool_name)
+        if cached is not None:
+            logger.debug("llm cache hit: %s", tool_name)
+            return cached
+
         kwargs = dict(
             model=model or self._settings.model,
             max_tokens=max_tokens or self._settings.max_tokens_per_call,
@@ -189,7 +205,12 @@ class LLMClient:
         # Find the tool_use block
         for block in response.content:
             if getattr(block, "type", None) == "tool_use":
-                return block.input
+                payload = block.input
+                # v0.2.2 — cache successful responses only. Empty dict payloads
+                # (LLM failure path) are NOT cached to avoid poisoning.
+                if payload:
+                    self._cache.set(system, user, tool_name, payload)
+                return payload
 
         # Some ccswitch / relay responses lose tool_use blocks. Surface what we
         # actually got so the user can diagnose (e.g., relay returned text instead).
