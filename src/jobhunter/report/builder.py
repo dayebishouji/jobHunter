@@ -797,7 +797,7 @@ def build_report(data: ReportData) -> str:
     radar = radar_svg(axes)
     hero_ring = score_ring_svg(avg_score) if avg_score else ""
     overtime_dist = overtime_distribution(data.review_facts.overtime_signals) if data.review_facts else []
-    salary_dist = salary_distribution(data.review_facts.salary_signals) if data.review_facts else []
+    salary_dist = salary_distribution(data.review_facts.salary_signals) if data.review_facts else None
     salary_band = compute_salary_band(data.review_facts.salary_signals) if data.review_facts else None
 
     # New editorial primitives

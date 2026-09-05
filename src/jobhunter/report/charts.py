@@ -220,8 +220,13 @@ def overtime_distribution(signals: list[OvertimeSignal]) -> list[dict]:
     return items
 
 
-def salary_distribution(signals: list[SalarySignal]) -> list[dict]:
-    """Bucket SalarySignal.base_monthly_k into 10K bins (10,20,30,40,50+)."""
+def salary_distribution(signals: list[SalarySignal]) -> list[dict] | None:
+    """Bucket SalarySignal.base_monthly_k into 10K bins (10,20,30,40,50+).
+
+    Returns None when no signal had a parseable base_monthly_k — caller renders
+    sparse-takeaway instead of an empty histogram. Otherwise returns
+    [{label, count, k_lo, k_hi}] for the 6 bins.
+    """
     buckets: list[tuple[int, int]] = [(0, 10), (10, 20), (20, 30), (30, 40), (40, 50), (50, 200)]
     counts = [0] * len(buckets)
     for s in signals:
@@ -231,18 +236,18 @@ def salary_distribution(signals: list[SalarySignal]) -> list[dict]:
             if lo <= s.base_monthly_k < hi:
                 counts[idx] += 1
                 break
+    if sum(counts) == 0:
+        return None
     result = []
     for (lo, hi), c in zip(buckets, counts):
-        label = f"{hi}+" if hi >= 200 else f"{lo}-{hi}"
-        # Simpler labels
         if hi >= 200:
             label = f"{lo}+"
         elif lo == 0:
             label = f"<{hi}"
         else:
             label = f"{lo}-{hi}"
-        result.append({"label": label, "count": c})
-    return [r for r in result if r["count"] > 0] or result  # never return [] for empty inputs
+        result.append({"label": label, "count": c, "k_lo": lo, "k_hi": hi})
+    return result
 
 
 # ---------- New editorial primitives ----------

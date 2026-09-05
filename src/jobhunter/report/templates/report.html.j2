@@ -807,6 +807,13 @@
       <div class="inline-viz-label">诉讼时间线</div>
       <div class="inline-viz-svg">{{ case_timeline_svg | safe }}</div>
     </div>
+    {% elif jf and jf.case_count_total %}
+    <div class="inline-viz">
+      <div class="inline-viz-label">诉讼时间线</div>
+      <div class="chapter-takeaway chapter-takeaway-sparse">
+        共 <span class="mono">{{ jf.case_count_total }}</span> 起诉讼未关联到具体年份；详见下方裁判文书列表。
+      </div>
+    </div>
     {% endif %}
 
     {% if jf.case_count_recent_year is not none and jf.case_count_recent_year > 0 %}
@@ -891,14 +898,14 @@
   <div class="data-table">
     <div class="data-row data-row-head">
       <div class="data-cell data-cell-key">数据点</div>
-      <div class="data-cell data-cell-num">月薪</div>
-      <div class="data-cell">来源</div>
+      <div class="data-cell data-cell-num">月薪区间</div>
+      <div class="data-cell">样本数</div>
     </div>
     {% for s in salary_dist %}
     <div class="data-row">
       <div class="data-cell data-cell-key mono">#{{ loop.index }}</div>
-      <div class="data-cell data-cell-num mono">¥{{ s.k }}K</div>
-      <div class="data-cell">{{ s.label }} {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">→</a>{% endif %}</div>
+      <div class="data-cell data-cell-num mono">¥{{ s.label }}K</div>
+      <div class="data-cell mono">{{ s.count }} 条</div>
     </div>
     {% endfor %}
   </div>
