@@ -100,3 +100,12 @@ class ReportData(BaseModel):
     # Populated by pipeline from CollectorResult.error. The template renders a
     # soft-fail banner on the corresponding chapter when a marker is present.
     collector_notes: dict[str, str] = Field(default_factory=dict)
+
+    # v0.3.5 — Review diagnostics for the sparse-state UX (D layer).
+    # Populated by pipeline from CollectorResult.items lengths, e.g.
+    #   {"platforms_queried": 40, "keywords_queried": 3,
+    #    "qna_calls": 1, "extract_pages": 5, "raw_items": 87,
+    #    "signals_extracted": 3}
+    # The template's `sparse_takeaway` macro renders these so the user sees
+    # the work that was done even when the LLM extracted few signals.
+    review_diagnostics: dict[str, int] = Field(default_factory=dict)

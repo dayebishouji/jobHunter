@@ -184,6 +184,13 @@ async def run(
     from jobhunter.report.builder import extract_collector_notes
     collector_notes = extract_collector_notes(results)
 
+    # v0.3.5 — review diagnostics for sparse-state UX. Counts Tavily main /
+    # blind / qna / extract pages queried + raw items + signals extracted.
+    from jobhunter.report.builder import compute_review_diagnostics
+    review_diagnostics = compute_review_diagnostics(
+        results, by_domain=by_domain, review_facts=findings.reviews
+    )
+
     data = ReportData(
         query=query,
         generated_at=datetime.now(timezone.utc),
@@ -199,6 +206,7 @@ async def run(
         overall_confidence=overall_confidence,
         chapter_confidence=chapter_confidence,
         collector_notes=collector_notes,
+        review_diagnostics=review_diagnostics,
     )
 
     # v0.1.15 — Cross-company comparison (opt-in via --compare flag).

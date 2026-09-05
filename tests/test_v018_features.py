@@ -249,18 +249,23 @@ class TestV0119CollectorOnePass:
         coll = TavilyReviewsCollector(Settings(), tavily=_Stub())
         result = await coll.collect(CompanyQuery(company="棒谷科技"))
 
-        # Every call gets exactly one domain in allowlist
-        for _q, allowlist in calls:
-            assert allowlist is not None
+        # v0.3.5 — main calls still get exactly one domain in allowlist;
+        # 3 blind calls fire with empty allowlist. Verify the per-domain
+        # contract on the main calls (they outnumber blind by design).
+        # main calls have allowlist of length 1; blind calls have allowlist of length 0.
+        main_calls = [(q, d) for q, d in calls if len(d) == 1]
+        blind_calls = [(q, d) for q, d in calls if len(d) == 0]
+        for _q, allowlist in main_calls:
             assert len(allowlist) == 1
-        # Got results back
+        assert len(blind_calls) == 3
         assert len(result.items) > 0
 
     async def test_no_pass2_fires_regardless_of_pass1_size(self):
-        """v0.1.19 — single-pass design. Even if pass-1 returns 0, we don't
-        run a separate 'broad' pass. v0.3.4 — adds a blind (no-allowlist)
-        fallback of 3 calls when main loop yields 0; that layer is
-        deliberately distinct from v0.1.18's keyword allowlist pass-2."""
+        """v0.1.19 — single-pass design for the per-domain recall layer.
+        v0.3.4 — added a blind (no-allowlist) fallback of 3 calls.
+        v0.3.5 — gate dropped: the 3 blind calls now ALWAYS fire (regardless
+        of whether main returns items). That layer is deliberately distinct
+        from v0.1.18's keyword allowlist pass-2."""
         from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector
         from jobhunter.config import Settings
         from jobhunter.models.query import CompanyQuery
@@ -277,7 +282,7 @@ class TestV0119CollectorOnePass:
         result = await coll.collect(CompanyQuery(company="棒谷科技"))
 
         # v0.1.22 hotfix — 20 GENERAL_REVIEW_DOMAINS × 2 names = 40 main calls
-        # v0.3.4 — +3 blind fallback calls (no allowlist) when main is empty
+        # v0.3.5 — +3 blind fallback calls (always fired)
         assert call_count == 43
         assert result.items == []
         assert result.error == "no_results"

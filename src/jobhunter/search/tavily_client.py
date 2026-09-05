@@ -111,6 +111,61 @@ class TavilyClient:
         )
         return results
 
+    async def qna_search(self, query: str) -> str:
+        """v0.3.5 — Tavily qna_search: AI-synthesized answer from public web.
+
+        Returns the answer as a plain string. Caller is responsible for
+        packaging it as a RawItem (with `tavily_qna` source so the LLM
+        extract step treats it differently from search snippets).
+        No cache here — qna answers are short, and Tavily's own caching
+        is per-API-call.
+        """
+        await self._throttle()
+        try:
+            result = await self._client.qna_search(query=query)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Tavily qna_search failed: %s | query=%s", e, query)
+            raise
+        answer = (result.get("answer") or "").strip()
+        return answer
+
+    async def extract(self, urls: list[str]) -> list[RawItem]:
+        """v0.3.5 — Tavily extract: fetch full markdown of given URLs.
+
+        Used by the extract-reviews collector to grab canonical review
+        pages on 看准 / 脉脉 / 牛客 / 知乎 etc. Returns one RawItem per
+        successful URL with the full content in `content` field.
+        """
+        if not urls:
+            return []
+        await self._throttle()
+        try:
+            result = await self._client.extract(urls=urls)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Tavily extract failed: %s | urls=%s", e, urls[:3])
+            raise
+        items: list[RawItem] = []
+        for r in result.get("results", []) or []:
+            url = r.get("url") or ""
+            raw = (r.get("raw_content") or "").strip()
+            if not url or not raw:
+                continue
+            try:
+                items.append(
+                    RawItem(
+                        source="tavily_extract",
+                        url=url,
+                        title=(r.get("title") or "")[:200],
+                        snippet=raw[:1500],
+                        retrieved_at=datetime.now(timezone.utc),
+                        payload={"full_content": raw[:5000]},
+                    )
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.debug("Skipping malformed Tavily extract result: %s", e)
+                continue
+        return items
+
 
 def _parse_date(s: str | None) -> datetime | None:
     """Best-effort date parse — Tavily date strings are loose."""

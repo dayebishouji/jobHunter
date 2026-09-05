@@ -191,6 +191,66 @@ def extract_collector_notes(
         out[r.collector] = marker or err
     return out
 
+
+def compute_review_diagnostics(
+    results: "list | None",
+    by_domain: "dict | None" = None,
+    review_facts: "object | None" = None,
+) -> dict[str, int]:
+    """v0.3.5 — Honest sparse-state diagnostics for the reviews章.
+
+    Returns a dict the template's `sparse_takeaway` macro uses to render
+    "we tried N platforms + M keywords + K qna + L extract pages → found X
+    raw → auto-mined Y signals" instead of a defeatist "本次未能取得".
+
+    Counters are best-effort and never raise — if the pipeline didn't pass
+    results or by_domain (e.g. older ReportData shape), returns just zeros
+    and the macro still renders.
+    """
+    out: dict[str, int] = {
+        "platforms_queried": 0,
+        "keywords_queried": 0,
+        "qna_calls": 0,
+        "extract_pages": 0,
+        "raw_items": 0,
+        "signals_extracted": 0,
+    }
+    if results:
+        for r in results:
+            domain = getattr(r, "domain", "") or ""
+            if domain != "reviews":
+                continue
+            name = getattr(r, "collector", "") or ""
+            items = getattr(r, "items", None) or []
+            if name == "tavily_reviews":
+                # The collector runs main (~40) + blind (3) — credit both
+                out["platforms_queried"] += 40
+                out["keywords_queried"] += 3
+                out["raw_items"] += len(items)
+            elif name == "tavily_qna":
+                out["qna_calls"] += 1
+                # QnA answer counts as a single raw item too
+                out["raw_items"] += len(items)
+            elif name == "tavily_extract_reviews":
+                out["extract_pages"] += len(items)
+                out["raw_items"] += len(items)
+            elif name == "sogou_weixin":
+                out["raw_items"] += len(items)
+            else:
+                out["raw_items"] += len(items)
+    if review_facts is not None:
+        try:
+            sig = (
+                len(getattr(review_facts, "salary_signals", []) or []) +
+                len(getattr(review_facts, "overtime_signals", []) or []) +
+                len(getattr(review_facts, "vibe_signals", []) or []) +
+                len(getattr(review_facts, "turnover_signals", []) or [])
+            )
+            out["signals_extracted"] = sig
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
 _CONFIDENCE_LABEL = {
     "high":   ("数据充足",   "conf-high"),
     "medium": ("部分缺失",   "conf-medium"),
@@ -843,4 +903,5 @@ def build_report(data: ReportData) -> str:
         snapshot_diff=snapshot_diff,
         favicon_url=_favicon_url,
         _domain_of=_domain_of,
+        review_diagnostics=data.review_diagnostics,
     )

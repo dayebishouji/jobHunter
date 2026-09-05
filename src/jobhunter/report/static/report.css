@@ -808,6 +808,48 @@ a:hover { color: var(--link-hover); border-bottom-color: var(--link-hover); }
 .chapter-takeaway-bad { border-left-color: var(--bad); }
 .chapter-takeaway-bad .chapter-takeaway-tag { color: var(--bad); }
 
+/* v0.3.5 — sparse takeaway: honest "we tried X, got Y" instead of defeatist
+   "本次未能取得". Brand left border + subtle summary line + manual links. */
+.chapter-takeaway-sparse {
+  border-left-color: var(--mid);
+  background: var(--paper-deep);
+}
+.chapter-takeaway-sparse .chapter-takeaway-tag { color: var(--mid); }
+.chapter-takeaway-sparse .chapter-takeaway-text {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+}
+.chapter-takeaway-sparse .sparse-summary {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-family: 'Noto Sans SC', sans-serif;
+}
+.chapter-takeaway-sparse .sparse-summary b {
+  color: var(--ink);
+  font-weight: 700;
+  font-family: 'Noto Sans Mono', monospace;
+  margin: 0 2px;
+}
+.chapter-takeaway-sparse .chapter-takeaway-links {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.chapter-takeaway-sparse .manual-link {
+  color: var(--brand);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--brand);
+  margin: 0 2px;
+}
+.chapter-takeaway-sparse .manual-link:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
 /* --- story-block (edit-note + data-story) --- */
 .story-block {
   margin: 14px 0 18px;

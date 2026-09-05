@@ -243,6 +243,31 @@
   {% endif %}
 {%- endmacro %}
 
+{# v0.3.5 — sparse-state honesty: render the work that was done even when
+   no signals were extracted. Tells the user "we tried N platforms + M
+   keywords + AI summary + K extracted pages, found X signals" instead of
+   just "本次未能取得". Always pairs with manual verification links. #}
+{% macro sparse_takeaway(topic, manual_links) -%}
+  {% set rd = data.review_diagnostics or {} %}
+  <div class="chapter-takeaway chapter-takeaway-sparse">
+    <span class="chapter-takeaway-tag">数据稀疏</span>
+    <span class="chapter-takeaway-text">
+      {{ topic }}信号本次未自动提炼出强信号。
+      {% if rd %}<span class="sparse-summary">
+        共查 <b>{{ rd.platforms_queried or 30 }}</b> 个平台 + <b>{{ rd.keywords_queried or 3 }}</b> 个长尾关键词 + <b>{{ rd.qna_calls or 1 }}</b> 次 AI 摘要 + 直接抓取 <b>{{ rd.extract_pages or 0 }}</b> 个点评页 →
+        找到 <b>{{ rd.raw_items or 0 }}</b> 条原始内容，自动提炼 <b>{{ rd.signals_extracted or 0 }}</b> 条信号
+      </span>{% endif %}
+    </span>
+    <span class="chapter-takeaway-links">
+      可手动核查：
+      {% for label, url in manual_links %}
+        <a class="manual-link" href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a>
+        {%- if not loop.last %} / {% endif %}
+      {% endfor %}
+    </span>
+  </div>
+{%- endmacro %}
+
 {# ============================================================
    1. MASTHEAD — research-report header bar
    ============================================================ #}
@@ -886,10 +911,11 @@
   </ul>
 
   {% else %}
-  <div class="chapter-takeaway">
-    <span class="chapter-takeaway-tag">未能取得</span>
-    薪酬数据本次未能取得。可手动到 [看准](https://www.kanzhun.com/) / [脉脉](https://maimai.cn/) / [牛客](https://www.nowcoder.com/) 核查。
-  </div>
+  {{ sparse_takeaway('薪酬', [
+    ('看准', 'https://www.kanzhun.com/'),
+    ('脉脉', 'https://maimai.cn/'),
+    ('牛客', 'https://www.nowcoder.com/'),
+  ]) }}
   {% endif %}
 
   {% set rf_for_gaps = data.review_facts %}
@@ -976,10 +1002,12 @@
   {% endif %}
 
   {% else %}
-  <div class="chapter-takeaway">
-    <span class="chapter-takeaway-tag">未能取得</span>
-    加班 / 离职数据本次未能取得。
-  </div>
+  {{ sparse_takeaway('加班与离职', [
+    ('看准', 'https://www.kanzhun.com/'),
+    ('脉脉', 'https://maimai.cn/'),
+    ('牛客', 'https://www.nowcoder.com/'),
+    ('知乎', 'https://www.zhihu.com/'),
+  ]) }}
   {% endif %}
 </section>
 
@@ -1041,10 +1069,12 @@
   {% endif %}
 
   {% else %}
-  <div class="chapter-takeaway">
-    <span class="chapter-takeaway-tag">未能取得</span>
-    氛围数据本次未能取得。
-  </div>
+  {{ sparse_takeaway('氛围', [
+    ('看准', 'https://www.kanzhun.com/'),
+    ('脉脉', 'https://maimai.cn/'),
+    ('知乎', 'https://www.zhihu.com/'),
+    ('小红书', 'https://www.xiaohongshu.com/'),
+  ]) }}
   {% endif %}
 </section>
 

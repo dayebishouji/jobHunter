@@ -49,25 +49,47 @@ def _stub_with_main_then(main_returns: list[list[RawItem]], blind_returns: list[
     return _Stub()
 
 
-class TestBlindFallbackNotTriggered:
-    """When the main loop yields any items, blind fallback does NOT fire."""
+class TestBlindFallbackAlwaysFires:
+    """v0.3.5 — Gate dropped: blind fallback ALWAYS fires (3 no-allowlist
+    queries). When the main loop also yields items, they are merged by URL
+    dedup so blind adds new hits without duplicating existing ones."""
 
-    async def test_main_has_items_skips_blind(self):
+    async def test_main_has_items_blind_merges_new_hits(self):
         from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector
 
+        main_item = RawItem(title="t", url="https://x.com/a", content="", source="tavily")
+        blind_item = RawItem(title="盲", url="https://x.com/b", content="", source="tavily")
         stub = _stub_with_main_then(
-            main_returns=[[RawItem(title="t", url="https://x.com/a", content="", source="tavily")]],
-            blind_returns=[[]],
+            main_returns=[[main_item]],
+            blind_returns=[[blind_item], [], []],
         )
         coll = TavilyReviewsCollector(_settings(), tavily=stub)
         result = await coll.collect(CompanyQuery(company="棒谷科技"))
 
-        # Only the main call fired (all subsequent main calls re-use last item)
-        assert len(result.items) >= 1
-        # No blind calls observed (all observations have non-empty allowlist)
-        assert all(domains for _q, domains in stub.observed)
-        # Confidence reflects normal path
+        # Both items present (merged by URL dedup)
+        assert main_item in result.items
+        assert blind_item in result.items
+        # Blind calls observed (no allowlist)
+        blind_calls = [q for q, d in stub.observed if not d]
+        assert len(blind_calls) == 3
+        # Confidence reflects merged path
         assert result.error is None
+
+    async def test_blind_dedupes_url_collision(self):
+        """If blind returns a URL already in main, dedup keeps only one."""
+        from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector
+
+        shared = RawItem(title="t", url="https://x.com/shared", content="", source="tavily")
+        stub = _stub_with_main_then(
+            main_returns=[[shared]],
+            blind_returns=[[shared], [], []],
+        )
+        coll = TavilyReviewsCollector(_settings(), tavily=stub)
+        result = await coll.collect(CompanyQuery(company="棒谷科技"))
+
+        # Single item, not duplicated
+        matching = [it for it in result.items if str(it.url) == "https://x.com/shared"]
+        assert len(matching) == 1
 
 
 class TestBlindFallbackTriggered:

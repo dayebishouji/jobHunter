@@ -103,13 +103,20 @@ class TavilyReviewsCollector(BaseCollector):
 
         items = _dedup_by_url(items)
 
-        # v0.3.4 — blind fallback only when main loop yielded 0 hits
+        # v0.3.5 — blind fallback now ALWAYS fires (gate dropped). The 3
+        # broader keyword queries (评价/体验/面试) catch long-tail UGC that
+        # the per-domain allowlist misses. Cost: +3 Tavily credits / run.
         blind_used = False
-        if not items:
-            blind = await self._blind_fallback(query)
-            if blind:
-                items = blind
-                blind_used = True
+        blind = await self._blind_fallback(query)
+        if blind:
+            blind_used = True
+            # Merge main + blind (dedup by URL)
+            seen = {str(it.url or "").rstrip("/") for it in items}
+            for it in blind:
+                u = str(it.url or "").rstrip("/")
+                if u not in seen:
+                    items.append(it)
+                    seen.add(u)
 
         if not items:
             return CollectorResult(
@@ -124,5 +131,5 @@ class TavilyReviewsCollector(BaseCollector):
             domain=self.domain,
             company_query=query,
             items=items,
-            confidence="low" if blind_used else ("medium" if len(items) >= 5 else "low"),
+            confidence="low" if blind_used and len(items) < 5 else ("medium" if len(items) >= 5 else "low"),
         )
