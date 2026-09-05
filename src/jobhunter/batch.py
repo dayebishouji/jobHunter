@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -27,6 +28,20 @@ from jobhunter.models.query import CompanyQuery
 from jobhunter.pipeline import ReportArtifacts, run as pipeline_run
 
 logger = logging.getLogger(__name__)
+
+
+# Regex for v0.3.2 inline `[JD:...]` — last field of a CSV row may contain it.
+# Allows escaped `\[` / `\]` and any non-bracket text inside. Match the whole
+# bracketed suffix and the literal `JD:` prefix.
+_JD_RE = re.compile(r"\[JD:(?P<body>(?:\\.|[^\[\]])*)\](?:\s*)$")
+
+# Verdict severity ordering — higher = more severe. Used by `rank_rows("verdict")`.
+_VERDICT_SEVERITY: dict[str, int] = {
+    "avoid": 4,
+    "caution": 3,
+    "neutral": 2,
+    "recommend": 1,
+}
 
 
 # =============== public dataclasses ===============
@@ -78,18 +93,55 @@ class BatchMeta:
 def parse_batch_file(path: Path, default_city: str = "") -> list[CompanyQuery]:
     """Read CSV: each row is `公司,岗位,城市` (1–3 fields).
 
+    v0.3.2 inline-JD support: a line may end with `[JD:...]` whose body can
+    contain commas without quoting. To make this work, we extract the
+    `[JD:...]` suffix from the raw line BEFORE handing it to `csv.reader`,
+    so the inner commas stay in the JD body rather than splitting into extra
+    fields. Example:
+
+        字节跳动,后端,北京 [JD:要求Go,15薪]
+
     Skip rules:
       - Lines whose first non-whitespace char is `#`
       - Empty / whitespace-only lines
-      - Rows with >3 fields or <1 non-empty field (logged + skipped)
+      - Rows with first field empty (logged + skipped)
     """
     queries: list[CompanyQuery] = []
     with path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.reader(f)
-        for line_no, row in enumerate(reader, start=1):
-            # Strip whitespace from each field
+        for line_no, raw_line in enumerate(f, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                continue
+
+            # v0.3.2 — extract trailing [JD:...] from the raw line FIRST so
+            # inner commas stay inside the JD body. Without this, csv.reader
+            # would split `北京 [JD:JD要求Go,15薪]` into ["北京 [JD:JD要求Go",
+            # "15薪]"] and the regex never sees the JD marker.
+            jd_text: str | None = None
+            m = _JD_RE.search(line)
+            if m:
+                jd_text = (
+                    m.group("body")
+                    .replace("\\[", "[")
+                    .replace("\\]", "]")
+                    .strip()
+                ) or None
+                # Strip the [JD:...] suffix; csv.reader sees only the prefix.
+                line = line[:m.start()].rstrip()
+                if not line:
+                    # Whole line was just `[JD:...]` — skip (no company info).
+                    continue
+
+            # Now run csv.reader on the prefix only
+            reader = csv.reader([line])
+            try:
+                row = next(reader)
+            except StopIteration:
+                continue
+
             fields = [c.strip() for c in row]
-            # Detect comment lines (whole line starts with #, possibly indented)
             non_empty = [c for c in fields if c]
             if not non_empty:
                 continue
@@ -102,10 +154,18 @@ def parse_batch_file(path: Path, default_city: str = "") -> list[CompanyQuery]:
                     path, line_no,
                 )
                 continue
+
             company = fields[0]
             position = fields[1] if len(fields) > 1 else ""
             city = fields[2] if len(fields) > 2 and fields[2] else default_city
-            queries.append(CompanyQuery(company=company, position=position, city=city))
+            queries.append(
+                CompanyQuery(
+                    company=company,
+                    position=position,
+                    city=city,
+                    jd_text=jd_text,
+                )
+            )
     return queries
 
 
@@ -232,6 +292,45 @@ def _salary_median(review_facts) -> float | None:
     return round(vals[len(vals) // 2], 1)
 
 
+# =============== rank_rows (v0.3.2 — CSS-only sort support) ===============
+
+def rank_rows(rows: list[BatchEntryResult], *, by: str) -> list[BatchEntryResult]:
+    """Return a new list sorted by the given dimension.
+
+    Used to pre-compute 4 sort views at render time (combined with `<input
+    type="radio">` + sibling selector in the template, this gives click-to-
+    sort with zero JS).
+
+    Supported `by` values:
+      - "score":   overall_score desc (None at bottom)
+      - "cases":   case_count_total asc (None at bottom; fewer = safer)
+      - "salary":  salary_p50 desc (None at bottom)
+      - "verdict": severity desc (avoid > caution > neutral > recommend)
+    """
+    if by == "score":
+        return sorted(
+            rows,
+            key=lambda r: (r.overall_score is None, -(r.overall_score or 0)),
+        )
+    if by == "cases":
+        return sorted(
+            rows,
+            key=lambda r: (r.case_count_total is None, r.case_count_total or 0),
+        )
+    if by == "salary":
+        return sorted(
+            rows,
+            key=lambda r: (r.salary_p50 is None, -(r.salary_p50 or 0)),
+        )
+    if by == "verdict":
+        def _key(r: BatchEntryResult) -> tuple[int, str]:
+            sev = _VERDICT_SEVERITY.get(r.verdict or "", 0)
+            # Stable tie-breaker on company name
+            return (-sev, r.company)
+        return sorted(rows, key=_key)
+    raise ValueError(f"unknown rank dimension: {by}")
+
+
 # =============== aggregate HTML ===============
 
 _TEMPLATE_NAME = "batch.html.j2"
@@ -241,8 +340,11 @@ _TEMPLATE_DIR = Path(__file__).parent / "report" / "templates"
 def build_batch_report_html(results: list[BatchEntryResult], meta: BatchMeta) -> str:
     """Render the aggregate summary page.
 
-    Table is sorted by overall_score desc, with failed entries pushed to the
-    bottom (status-failed class for visual distinction).
+    v0.3.1: default sort = overall_score desc + failures at the bottom.
+
+    v0.3.2: pre-compute 4 sort views (score / cases / salary / verdict) at
+    render time, hand them all to the template, and let CSS-only radio
+    inputs toggle which tbody is visible. Zero JS required.
     """
     import jinja2
 
@@ -257,16 +359,31 @@ def build_batch_report_html(results: list[BatchEntryResult], meta: BatchMeta) ->
     successes = [r for r in results if r.status == "success"]
     failures = [r for r in results if r.status == "failed"]
 
-    # Sort successes by overall_score desc; failures by company name asc
+    # Sort successes by overall_score desc; failures by company name asc.
+    # This is the "primary" sort shown by default.
     successes_sorted = sorted(
         successes,
         key=lambda r: (r.overall_score is None, -(r.overall_score or 0)),
     )
     failures_sorted = sorted(failures, key=lambda r: r.company)
-
     rows = successes_sorted + failures_sorted
 
-    return template.render(rows=rows, meta=meta, css=_load_css())
+    # v0.3.2 — compute 3 alternative sort views (radio toggles between them).
+    # Failures always go to the bottom regardless of sort key.
+    rows_by_score = rank_rows(successes, by="score") + failures_sorted
+    rows_by_cases = rank_rows(successes, by="cases") + failures_sorted
+    rows_by_salary = rank_rows(successes, by="salary") + failures_sorted
+    rows_by_verdict = rank_rows(successes, by="verdict") + failures_sorted
+
+    return template.render(
+        rows=rows,
+        meta=meta,
+        css=_load_css(),
+        rows_by_score=rows_by_score,
+        rows_by_cases=rows_by_cases,
+        rows_by_salary=rows_by_salary,
+        rows_by_verdict=rows_by_verdict,
+    )
 
 
 def _load_css() -> str:

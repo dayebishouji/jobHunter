@@ -121,3 +121,33 @@ def mark_ran(company: str) -> None:
 def path_for_display() -> Path:
     """Return the watchlist JSON path (used by `jobhunter watch list --path`)."""
     return _PATH
+
+
+def entries_to_queries(
+    entries: list[WatchEntry],
+    *,
+    city_override: str = "",
+) -> list:
+    """v0.3.2 — Convert watchlist entries into `CompanyQuery` for batch mode.
+
+    `city_override` lets `--city` from the CLI take precedence over each
+    entry's stored city (useful for users who keep the watchlist city empty
+    or stale). Empty `city_override` means keep each entry's stored city.
+
+    Each WatchEntry has no JD field (out of scope for v0.3.2), so all
+    resulting queries get `jd_text=None`. Use `--jd TEXT` on the batch
+    command if a default JD applies to all watched companies.
+    """
+    # Local import to avoid a hard dependency from this module to models.
+    from jobhunter.models.query import CompanyQuery
+
+    out: list[CompanyQuery] = []
+    for e in entries:
+        out.append(
+            CompanyQuery(
+                company=e.company,
+                position=e.position,
+                city=city_override or e.city,
+            )
+        )
+    return out

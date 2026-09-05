@@ -12,6 +12,64 @@
 <style>{{ css | safe }}</style>
 <style>
 /* === batch-page local additions === */
+/* v0.3.2 — CSS-only table sort via 4 radio inputs + sibling selector */
+input[name="batch-sort"] { display: none; }
+.sort-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 12px;
+}
+.sort-label {
+  color: #777;
+  font-family: 'Noto Sans SC', sans-serif;
+  margin-right: 4px;
+}
+.sort-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid var(--paper-deep, #f1ece0);
+  border-radius: 14px;
+  background: var(--paper-cream, #fbfaf6);
+  color: var(--ink, #1a1a1a);
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.sort-chip:hover {
+  border-color: var(--broker-blue, #1a3a6e);
+  color: var(--broker-blue, #1a3a6e);
+}
+/* Default: only tbody-sort-score is visible. Each radio:checked state
+   reveals its matching tbody and hides the other three. */
+.tbody-sort-cases,
+.tbody-sort-salary,
+.tbody-sort-verdict { display: none; }
+#sort-cases:checked   ~ .tbody-sort-cases   { display: table; }
+#sort-salary:checked  ~ .tbody-sort-salary  { display: table; }
+#sort-verdict:checked ~ .tbody-sort-verdict { display: table; }
+/* Hide the first "header-only" table when a sort radio is checked
+   (otherwise the user sees two tables stacked). */
+#sort-cases:checked   ~ .batch-table:not(.tbody-sort-cases):not(.tbody-sort-score):not(.tbody-sort-salary):not(.tbody-sort-verdict),
+#sort-salary:checked  ~ .batch-table:not(.tbody-sort-cases):not(.tbody-sort-score):not(.tbody-sort-salary):not(.tbody-sort-verdict),
+#sort-verdict:checked ~ .batch-table:not(.tbody-sort-cases):not(.tbody-sort-score):not(.tbody-sort-salary):not(.tbody-sort-verdict) {
+  display: none;
+}
+/* Active chip styling: only one chip should look "active" at a time. */
+.sort-chip[data-active="true"] {
+  background: var(--broker-blue, #1a3a6e);
+  color: white;
+  border-color: var(--broker-blue, #1a3a6e);
+}
+#sort-cases:checked   ~ .sort-chips label[for="sort-score"]   { background: var(--paper-cream, #fbfaf6); color: var(--ink, #1a1a1a); border-color: var(--paper-deep, #f1ece0); }
+#sort-salary:checked  ~ .sort-chips label[for="sort-score"]   { background: var(--paper-cream, #fbfaf6); color: var(--ink, #1a1a1a); border-color: var(--paper-deep, #f1ece0); }
+#sort-verdict:checked ~ .sort-chips label[for="sort-score"]   { background: var(--paper-cream, #fbfaf6); color: var(--ink, #1a1a1a); border-color: var(--paper-deep, #f1ece0); }
+#sort-cases:checked   ~ .sort-chips label[for="sort-cases"]   { background: var(--broker-blue, #1a3a6e); color: white; border-color: var(--broker-blue, #1a3a6e); }
+#sort-salary:checked  ~ .sort-chips label[for="sort-salary"]  { background: var(--broker-blue, #1a3a6e); color: white; border-color: var(--broker-blue, #1a3a6e); }
+#sort-verdict:checked ~ .sort-chips label[for="sort-verdict"] { background: var(--broker-blue, #1a3a6e); color: white; border-color: var(--broker-blue, #1a3a6e); }
 .batch-masthead {
   border-bottom: 2px solid var(--ink, #1a1a1a);
   padding: 24px 32px 18px;
@@ -203,7 +261,23 @@
 </header>
 
 <section class="batch-section">
-  <h2>对比表（按综合分排序）</h2>
+  {# v0.3.2 — CSS-only sort: 4 radio inputs drive which tbody is shown.
+     No JS: each `<label for="sort-X">` toggles a checked state on the
+     matching radio, and the CSS sibling selector reveals its tbody. #}
+  <input type="radio" name="batch-sort" id="sort-score" checked hidden>
+  <input type="radio" name="batch-sort" id="sort-cases" hidden>
+  <input type="radio" name="batch-sort" id="sort-salary" hidden>
+  <input type="radio" name="batch-sort" id="sort-verdict" hidden>
+
+  <h2>对比表</h2>
+  <div class="sort-chips" role="tablist" aria-label="排序方式">
+    <span class="sort-label">排序：</span>
+    <label for="sort-score" class="sort-chip" data-active="true">综合分</label>
+    <label for="sort-cases" class="sort-chip">司法数</label>
+    <label for="sort-salary" class="sort-chip">薪酬 P50</label>
+    <label for="sort-verdict" class="sort-chip">判断</label>
+  </div>
+
   <table class="batch-table">
     <thead>
       <tr>
@@ -220,8 +294,20 @@
         <th>详情</th>
       </tr>
     </thead>
+  </table>
+
+  {# 4 tbody blocks — one per sort view. CSS hides 3, shows 1 (the checked).
+     Each tbody renders the same columns but rows are pre-sorted differently
+     at Python render time. #}
+  {% for view_name, view_rows in [
+    ('score',   rows_by_score),
+    ('cases',   rows_by_cases),
+    ('salary',  rows_by_salary),
+    ('verdict', rows_by_verdict),
+  ] %}
+  <table class="batch-table tbody-sort tbody-sort-{{ view_name }}">
     <tbody>
-      {% for r in rows %}
+      {% for r in view_rows %}
       <tr class="{% if r.status == 'failed' %}status-failed{% endif %}">
         <td><strong>{{ r.company }}</strong></td>
         <td>{{ r.position or '—' }}</td>
@@ -279,6 +365,8 @@
       </tr>
       {% endfor %}
     </tbody>
+  </table>
+  {% endfor %}
   </table>
 </section>
 

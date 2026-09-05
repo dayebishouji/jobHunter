@@ -286,20 +286,22 @@ from jobhunter.utils.slug import batch_dir_slug  # noqa: E402
 
 
 @main.command(name="batch")
-@click.option("--file", "-f", required=True, type=click.Path(exists=True, path_type=Path), help="CSV 文件路径（一行一公司：`公司,岗位,城市`，# 开头为注释）")
-@click.option("--city", "-y", default="", help="默认城市（行内未填 city 时使用）")
+@click.option("--file", "-f", required=False, type=click.Path(exists=True, path_type=Path), help="CSV 文件路径（一行一公司：`公司,岗位,城市`，# 开头为注释；行尾可加 `[JD:...]` 覆盖默认 JD）")
+@click.option("--from-watchlist", is_flag=True, default=False, help="从 watchlist 读公司列表（与 --file 互斥）")
+@click.option("--city", "-y", default="", help="默认城市（行内未填 city 时使用；watchlist 模式下覆盖所有 entry 的 city）")
 @click.option("--no-judicial", is_flag=True, default=False, help="跳过司法")
 @click.option("--no-news", is_flag=True, default=False, help="跳过新闻")
-@click.option("--jd", "jd_text", default=None, help="JD 文本（可选，所有公司共用）")
+@click.option("--jd", "jd_text", default=None, help="JD 文本（可选，所有公司共用；行内 [JD:...] 优先）")
 @click.option("--jd-file", "jd_file", default=None, type=click.Path(exists=True, path_type=Path), help="JD 文件路径")
 @click.option("--output", "-o", default=None, type=click.Path(path_type=Path), help="per-company 报告输出目录（默认 reports/）")
-@click.option("--batch-out", "-O", default=None, type=click.Path(path_type=Path), help="聚合页输出目录（默认 reports/batch/{file_stem}-{ts}/）")
+@click.option("--batch-out", "-O", default=None, type=click.Path(path_type=Path), help="聚合页输出目录（默认 reports/batch/{file_stem-or-watchlist}-{ts}/）")
 @click.option("--batch-concurrency", default=3, type=int, help="并发上限（asyncio.Semaphore，默认 3）")
 @click.option("--strict", is_flag=True, default=False, help="fail-fast：任一公司失败立即 abort（默认 best-effort）")
 @click.option("--no-open", is_flag=True, default=False, help="不自动打开聚合页")
 @click.option("--print", "print_pdf", is_flag=True, default=False, help="生成后触发 ?print=1")
 def batch_cmd(
-    file: Path,
+    file: Path | None,
+    from_watchlist: bool,
     city: str,
     no_judicial: bool,
     no_news: bool,
@@ -312,9 +314,12 @@ def batch_cmd(
     no_open: bool,
     print_pdf: bool,
 ) -> None:
-    """批量跑多家公司（CSV 文件输入），生成 per-company 报告 + 横向对比聚合页。
+    """批量跑多家公司（CSV 文件或 watchlist 输入），生成 per-company 报告 + 横向对比聚合页。
 
-    文件格式：`公司,岗位,城市` 一行一个；# 开头为注释；空行跳过。
+    来源（互斥，二选一）：
+      - `--file / -f PATH` ：CSV 文件，格式 `公司,岗位,城市`；# 开头为注释；行尾可加 `[JD:...]`。
+      - `--from-watchlist`：从 ~/.cache/jobhunter/watchlist.json 读。
+
     并发上限默认 3（asyncio.Semaphore）；失败默认 best-effort（--strict 改 fail-fast）。
     """
     _setup_logging()
@@ -330,20 +335,50 @@ def batch_cmd(
     if jd_file:
         jd_text = jd_file.read_text(encoding="utf-8").strip() or None
 
-    # Parse batch file → list of queries
-    try:
-        queries = parse_batch_file(file, default_city=city)
-    except Exception as e:  # noqa: BLE001
-        err_console.print(f"[red]无法解析 batch 文件 {file}：[/red]{e}")
+    # v0.3.2 — input source resolution: --file / --from-watchlist / neither
+    if file and from_watchlist:
+        err_console.print("[red]--file 与 --from-watchlist 二选一[/red]")
+        raise click.exceptions.Exit(code=2)
+    if not file and not from_watchlist:
+        err_console.print("[red]必须提供 --file 或 --from-watchlist[/red]")
         raise click.exceptions.Exit(code=2)
 
-    if not queries:
-        err_console.print(f"[red]batch 文件 {file} 没有有效公司行[/red]")
-        raise click.exceptions.Exit(code=2)
+    source_label: str
+    if from_watchlist:
+        entries = watchlist.list_entries()
+        if not entries:
+            err_console.print(
+                "[yellow]watchlist 为空[/yellow] — "
+                "`jobhunter watch add -c <公司名> [-p <岗位>] [-y <城市>]` 加入"
+            )
+            raise click.exceptions.Exit(code=2)
+        from jobhunter.watchlist import entries_to_queries
+        queries = entries_to_queries(entries, city_override=city)
+        # For watchlist mode, the default JD applies to every entry (no inline override).
+        for q in queries:
+            if jd_text and not q.jd_text:
+                q.jd_text = jd_text
+        source_label = f"watchlist ({len(queries)} 项)"
+    else:
+        try:
+            queries = parse_batch_file(file, default_city=city)
+        except Exception as e:  # noqa: BLE001
+            err_console.print(f"[red]无法解析 batch 文件 {file}：[/red]{e}")
+            raise click.exceptions.Exit(code=2)
+        # v0.3.2 — propagate default JD to lines without inline [JD:...]
+        # (inline takes precedence; this only fills the gaps).
+        for q in queries:
+            if jd_text and not q.jd_text:
+                q.jd_text = jd_text
+        if not queries:
+            err_console.print(f"[red]batch 文件 {file} 没有有效公司行[/red]")
+            raise click.exceptions.Exit(code=2)
+        source_label = f"{file.name} ({len(queries)} 家)"
 
-    console.print(f"[bold]batch 模式[/bold] · 共 {len(queries)} 家公司 · 并发 {batch_concurrency} · 源文件 {file.name}")
+    console.print(f"[bold]batch 模式[/bold] · 共 {len(queries)} 家公司 · 并发 {batch_concurrency} · 源 {source_label}")
     for q in queries:
-        console.print(f"  • {q.company} · {q.position or '—'} · {q.city or '—'}")
+        jd_marker = " · JD" if q.jd_text else ""
+        console.print(f"  • {q.company} · {q.position or '—'} · {q.city or '—'}{jd_marker}")
 
     # Compute output dirs
     per_company_dir = output or settings.output_dir
