@@ -39,7 +39,8 @@ python -m jobhunter
 python -m jobhunter run -c "阿里云" -p "后端工程师" --city "杭州"
 python -m jobhunter run -c "字节跳动" --no-news          # 跳过新闻域（更快）
 python -m jobhunter run -c "X" --no-judicial --no-open   # 不查司法、不自动开浏览器
-python -m jobhunter batch -f companies.txt               # v0.3.1 批量横向对比（CSV 输入）
+python -m jobhunter batch -f companies.txt               # v0.3.2 批量横向对比（CSV 输入 + 行尾 [JD:...] 覆盖）
+python -m jobhunter batch --from-watchlist               # v0.3.2 从 watchlist 批量
 python -m jobhunter --version
 ```
 
@@ -80,12 +81,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 504 tests
+pytest                        # 522 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.3.1）
+## 已知限制（v0.3.2）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -113,6 +114,7 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.2.1 落实 `docs/audits/2026-09-05-pipeline-flow-audit.md` 顶 3 推荐**：(1) **consolidate LLM 调用加 tenacity 重试** — 之前 `llm_retry()` 只捕 `httpx.TransportError` / `ConnectionError` / `TimeoutError`，5xx / 429 / 529 一闪即触发 consolidate fallback 丢跨域 inferences 块；现在 `anthropic.APIError`（覆盖所有子类 `APIConnectionError` / `APIStatusError` / `RateLimitError` / `APITimeoutError`）也进 retry tuple。`consolidate()` 进一步 opt-in `retry_policy="strict"`（≥3 尝试，max 20s backoff，`llm_retry_strict` 新函数）；`LLMClient.structured_call()` 新增 `retry_policy: str = "default"` 参数。(2) **流程图视觉强化 fallback 路径** — `pipeline.mmd` consolidate 失败的 G3→G4 边改 `==>`（粗箭头）+ `:::fail` classDef 红色填充 + edge label "AggregatedFindings = raw facets (best-effort · 整个 run 不挂)"。(3) **流程图节点折叠** — 3 个 `_build_peer_summary` 节点合 1 + "× N peers" 注脚；11 个 compute 盒按角色合 4 独立 + 1 合并盒（H_MISC 含 7 个：conflicts / confidence / collector_notes / snapshot_diff / edit_notes / signal_supports / trial_checklist）；最终渲染 7936×1848, 4.29:1 宽屏。(4) `docs/audits/2026-09-05-pipeline-flow-audit.md` 新文件 — 6 节覆盖 diagram-level (5 项) / pipeline-level (6 项) / product-level (2 项) + 推荐优先级。测试 +14 (`tests/test_v0201_retry.py` 全过)，445 → 459 pass
 - **v0.2.2 落实 `docs/audits/2026-09-05-pipeline-flow-audit.md` 第 4 节「下个月做」中的 2 条基础改动**：(1) **Round 2 触发条件改 type-diversity**（§2.2）—— `_needs_second_pass` 重命名为 `_round2_worthwhile`，阈值收紧到「4 个核心信号类型（salary / overtime / vibe / turnover）中 ≤ 1 个有内容才触发」，去掉冗余 `total_signals < 3` OR 子句；新增 `Round2TriggerReason` enum（`SIGNAL_TYPES_LOW` / `NO_FIRST_PASS` / `NOT_TRIGGERED`）+ 结构化 INFO 日志；辅助类型（jd_gap / slang）不计入多样性。语义修复：旧 `None → False`，新 `None → True`（NO_FIRST_PASS）—— LLM 一次失败应该再试。`extract.py:phase 2` caller 也修：`_second_pass_reviews` 接受 `first: ReviewFacts`，None 场景传空 `ReviewFacts()` 即可。(2) **LLM response disk cache**（§2.3）—— 新文件 `src/jobhunter/llm/cache.py` 的 `LLMResponseCache` 类，mirror Tavily `FileCache` 模式：SHA1[:32] key、TTL in JSON、atomic `.tmp + os.replace`、lazy eviction；cache key = SHA1(`system + '|' + user + '|' + tool_name`)；wired 进 `LLMClient.__init__` + `structured_call()` 作为 short-circuit：hit 跳过整个 API call（不计 tokens / 不走 retry）；poison 保护：空 dict 响应（LLM 失败 / budget 耗尽 / 空 tool_use）**绝不**缓存，避免 24h 锁死。`Settings.llm_cache_enabled: bool = True`（默认开，`JOBHUNTER_LLM_CACHE_ENABLED=false` 关停）。cache 目录 `<user_cache_dir>/llm_cache/`，与 Tavily cache 同级但独立子目录。`retry_policy="strict"`（consolidate）也参与 cache —— 重复 run 同公司 24h 内命中 0 成本。测试 +30（`tests/test_v0202_round2.py` 11 个 + `tests/test_v014_features.py` 3 个改名 + `tests/test_v0203_llm_cache.py` 16 个：cache 直接 API 7 + TTL 2 + admin 2 + structured_call 集成 5 含 poison guard / strict-policy / disabled 路径），459 → 489 pass。3.1 Batch 模式（`--batch FILE`，txt 一行一个公司 + # 注释）按用户决策推迟到 v0.3.1
 - **v0.3.1 落实 audit §3.1 批量模式（`--batch FILE`）**：(1) **新模块 `src/jobhunter/batch.py`** — `parse_batch_file()` 用标准库 `csv` 解析 `公司,岗位,城市`（自动处理引号内的逗号），跳过 `#` 注释 / 空行 / 畸形行；`run_batch()` asyncio.Semaphore(3) + best-effort，单公司失败不中断 batch；`_salary_median()` 简化 P50 用于聚合表；`build_batch_report_html()` Jinja2 渲染聚合页。(2) **新模板 `src/jobhunter/report/templates/batch.html.j2`** — masthead + KPI strip + 按综合分 desc 排序的对比表（公司/岗位/城市/综合分/verdict badge/5 轴 strip/司法数/异常/薪酬 P50/状态/详情链接）+ 失败区（公司名 + error message）+ footer；视觉同 v0.2.0 broker research world（paper-cream + broker-blue + Noto Serif SC），复用 `report.css` + +208 行 batch-page 专属 CSS；零外部依赖、单文件可移植。(3) **CLI 集成 `cli.py:batch_cmd`** — 12 个选项 `--file/-f` `--city/-y` `--no-judicial` `--no-news` `--jd` `--jd-file` `--output/-o` `--batch-out/-O` `--batch-concurrency`（默认 3）`--strict`（默认 best-effort，CI 友好 fail-fast）`--no-open` `--print`；`main.add_command(batch_cmd, name="batch")`。(4) **`utils/slug.py`** 加 `batch_dir_slug(file_path, ts)`：聚合页目录 `{file_stem}-{ts}`。(5) **复用 v0.2.2 LLMResponseCache + Tavily FileCache**：同次 batch 重复公司 24h 内命中 0 成本；v0.2.2 poison guard 保证 batch 不被空 cache 锁死。用法：`python -m jobhunter batch -f companies.txt --city 上海`；测试 +15（`tests/test_v0301_batch.py`：7 解析 + 3 runner + 3 聚合页 + 2 CLI 集成），489 → 504 pass
+- **v0.3.2 batch 增强 3 件套**（用户决策：只做这 3 项，排序走 CSS-only 零 JS）：(1) **per-line `[JD:...]` 覆盖默认 `--jd`** — `parse_batch_file()` 重构为先 regex 扫行尾再 `csv.reader`（避免内嵌逗号被切字段），regex `\[JD:(?P<body>(?:\\.|[^\[\]])*)\](?:\s*)$` 支持 `\[` / `\]` 转义；行内 `[JD:...]` 优先，`--jd TEXT` 作为未指定公司的 fallback。例：`字节跳动,后端,北京 [JD:要求Go,15薪,弹性]`。(2) **CSS-only 聚合页排序（4 维度）** — Python render 时 `rank_rows(rows, by=...)` 预计算 4 份排序（score desc / cases asc / salary desc / verdict severity desc），模板 4 个 hidden `<input type="radio" name="batch-sort">` + 4 个 `<tbody class="tbody-sort tbody-sort-X">`；CSS `#sort-X:checked ~ .tbody-sort-X { display: table; }` + sibling selector 切换；排序 chip 用 `<label for="sort-X">` 绑定；零 `<script>` 标签、零 JS 事件、单文件可移植。verdict severity：`avoid=4 > caution=3 > neutral=2 > recommend=1`，最严重的排顶部。(3) **`--from-watchlist` flag** — `cli.py:batch_cmd` 加 `--from-watchlist` store_true flag，与 `--file` 互斥（同时传 → exit 2，缺一 → exit 2），watchlist 空 → 友好提示 `jobhunter watch add -c X` 加入并 exit 2；`watchlist.entries_to_queries(entries, city_override=city)` 解耦 batch ↔ watchlist，`city_override` 让 `--city` 覆盖所有 entry 的 city。用法：`python -m jobhunter batch --from-watchlist --city 上海`；测试 +18（`tests/test_v0302_batch_enhance.py`：5 per-line JD + 4 rank_rows + 4 HTML 排序结构 + 3 watchlist helper + 2 CLI 互斥），504 → 522 pass
 - 不支持：Web 服务、Playwright
 
 ## 下次接手可考虑的深度改动
