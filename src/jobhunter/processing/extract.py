@@ -16,6 +16,7 @@ import json
 import logging
 import re
 from datetime import date
+from enum import Enum
 
 from jobhunter.llm import (
     CONSOLIDATE_SYSTEM,
@@ -124,18 +125,43 @@ def _reviews_signal_count(rf: ReviewFacts | None) -> dict[str, int]:
     }
 
 
-def _needs_second_pass(rf: ReviewFacts | None) -> bool:
-    """True when reviews extraction came back thin — a focused second call may
-    surface missed signals. Threshold: <3 total non-zero types, AND at least 2
-    raw items were available (otherwise there was nothing to extract)."""
+class Round2TriggerReason(str, Enum):
+    """Why the focused reviews-domain second LLM pass fires (or doesn't).
+
+    v0.2.2 — structured enum replaces ad-hoc bool return so debug logs and
+    pipeline metrics can record the trigger reason explicitly.
+    """
+
+    SIGNAL_TYPES_LOW = "SIGNAL_TYPES_LOW"      # ≤ 1 of 4 core types have signals
+    NO_FIRST_PASS = "NO_FIRST_PASS"            # first-pass LLM returned None / invalid
+    NOT_TRIGGERED = "NOT_TRIGGERED"            # first-pass already covered ≥ 2 core types
+
+
+def _round2_worthwhile(rf: ReviewFacts | None) -> tuple[bool, Round2TriggerReason]:
+    """Decide whether a focused reviews-domain second pass is worthwhile.
+
+    v0.2.2 — Strict type-diversity: trigger when first-pass covered 0 or 1
+    of the 4 core signal types (salary / overtime / vibe / turnover).
+    Auxiliary types (jd_gap, slang) don't count toward diversity — they
+    are metadata, not main signals.
+
+    Returns (should_trigger, reason). Caller logs `reason` for debug.
+
+    Pre-v0.2.2 logic was `nonzero_types <= 2 OR total_signals < 3`, which
+    over-triggered on thin-but-2-type results (e.g. 1 salary + 1 overtime).
+    Audit doc 2026-09-05 §2.2 identified this as浪费 round 2 for cases
+    where the chapter is already healthy enough.
+    """
     if not rf:
-        return False
+        return True, Round2TriggerReason.NO_FIRST_PASS
+
     counts = _reviews_signal_count(rf)
-    nonzero_types = sum(1 for v in counts.values() if v > 0)
-    total_signals = sum(counts.values())
-    # Trigger when the LLM barely populated the bucket — but don't trigger
-    # again if we already got >6 signals (the chapter is healthy).
-    return nonzero_types <= 2 or total_signals < 3
+    core_types = ("salary", "overtime", "vibe", "turnover")
+    distinct_core = sum(1 for k in core_types if counts.get(k, 0) > 0)
+
+    if distinct_core <= 1:
+        return True, Round2TriggerReason.SIGNAL_TYPES_LOW
+    return False, Round2TriggerReason.NOT_TRIGGERED
 
 
 async def _second_pass_reviews(
@@ -371,14 +397,23 @@ async def extract_all_domains(
     out: dict[str, object] = dict(zip(domains, results))
 
     # Phase 2 — focused second pass for reviews if first is thin
+    # v0.2.2 — strict type-diversity trigger (≤ 1 of 4 core signal types).
+    # Pre-v0.2.2 logic also triggered on `total_signals < 3` which over-triggered
+    # for 2-type-thin cases that already had a healthy chapter.
     reviews_first = out.get("reviews")
-    if _needs_second_pass(reviews_first if isinstance(reviews_first, ReviewFacts) else None):
+    reviews_first_obj = reviews_first if isinstance(reviews_first, ReviewFacts) else None
+    should, reason = _round2_worthwhile(reviews_first_obj)
+    if should:
+        logger.info("round-2 reviews trigger: %s", reason.value)
         try:
             extra = await _second_pass_reviews(
-                llm, by_domain.get("reviews", []), reviews_first  # type: ignore[arg-type]
+                llm, by_domain.get("reviews", []), reviews_first_obj or ReviewFacts()
             )
             if extra:
-                out["reviews"] = _merge_reviews(reviews_first, extra)  # type: ignore[arg-type]
+                if reviews_first_obj:
+                    out["reviews"] = _merge_reviews(reviews_first_obj, extra)
+                else:
+                    out["reviews"] = extra
         except Exception as e:  # noqa: BLE001
             logger.warning("second-pass reviews failed: %s", e)
 

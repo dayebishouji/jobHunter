@@ -25,8 +25,9 @@ from jobhunter.pipeline import _fact_driven_interview_questions
 from jobhunter.processing.extract import (
     _loose_keyword_reviews,
     _merge_reviews,
-    _needs_second_pass,
     _reviews_signal_count,
+    _round2_worthwhile,
+    Round2TriggerReason,
 )
 from jobhunter.report.builder import build_report
 from jobhunter.search.query_templates import (
@@ -105,13 +106,25 @@ class TestLooseKeywordReviews:
         assert rf.salary_signals == []
 
 
-class TestNeedsSecondPass:
-    """Threshold heuristic for triggering the second LLM call."""
+class TestRound2Worthwhile:
+    """v0.2.2 — strict type-diversity trigger (≤ 1 of 4 core signal types).
 
-    def test_empty_reviews_needs_second_pass(self):
-        assert _needs_second_pass(None) is False  # None → skip (no items)
-        empty = ReviewFacts()
-        assert _needs_second_pass(empty) is True
+    Pre-v0.2.2 used `nonzero_types <= 2 OR total_signals < 3`; v0.2.2
+    simplifies to "0 or 1 of the 4 core types have signals → trigger".
+    Auxiliary types (jd_gap, slang) do NOT count toward diversity.
+    """
+
+    def test_none_returns_no_first_pass(self):
+        should, reason = _round2_worthwhile(None)
+        assert should is True
+        assert reason is Round2TriggerReason.NO_FIRST_PASS
+
+    def test_empty_review_facts_returns_no_first_pass(self):
+        # An empty ReviewFacts() is still truthy (it's an instance), so it
+        # goes through the type-diversity path — 0 distinct core types → trigger.
+        should, reason = _round2_worthwhile(ReviewFacts())
+        assert should is True
+        assert reason is Round2TriggerReason.SIGNAL_TYPES_LOW
 
     def test_full_reviews_does_not_need_second_pass(self):
         rf = ReviewFacts(
@@ -121,13 +134,49 @@ class TestNeedsSecondPass:
             turnover_signals=[],
             jd_gap_signals=[],
         )
-        assert _needs_second_pass(rf) is False  # 3 types populated
+        should, reason = _round2_worthwhile(rf)
+        assert should is False
+        assert reason is Round2TriggerReason.NOT_TRIGGERED
 
     def test_single_type_only_needs_second_pass(self):
         rf = ReviewFacts(
             salary_signals=[SalarySignal(position="p", base_monthly_k=30.0)],
         )
-        assert _needs_second_pass(rf) is True
+        should, reason = _round2_worthwhile(rf)
+        assert should is True
+        assert reason is Round2TriggerReason.SIGNAL_TYPES_LOW
+
+    def test_two_distinct_core_types_does_not_trigger(self):
+        """2 salary + 2 overtime signals but 0 vibe / turnover → NOT triggered.
+
+        v0.2.2 — this used to trigger under the old `nonzero_types <= 2`
+        + `total_signals < 3` heuristic (total_signals=4 ≥ 3 but
+        nonzero_types=2 ≤ 2, so the OR clause fired). Now it doesn't trigger
+        because distinct_core_types = 2, which is healthy.
+        """
+        rf = ReviewFacts(
+            salary_signals=[
+                SalarySignal(position="p", base_monthly_k=30.0),
+                SalarySignal(position="q", base_monthly_k=35.0),
+            ],
+            overtime_signals=[
+                OvertimeSignal(pattern="996", intensity="high"),
+                OvertimeSignal(pattern="995", intensity="medium"),
+            ],
+        )
+        should, reason = _round2_worthwhile(rf)
+        assert should is False
+        assert reason is Round2TriggerReason.NOT_TRIGGERED
+
+    def test_only_auxiliary_types_does_not_trigger(self):
+        """Only jd_gap / slang filled → 0 distinct core → SHOULD trigger."""
+        rf = ReviewFacts(
+            jd_gap_signals=[],
+            slang_glossary=[],
+        )
+        should, reason = _round2_worthwhile(rf)
+        assert should is True
+        assert reason is Round2TriggerReason.SIGNAL_TYPES_LOW
 
 
 class TestMergeReviews:
