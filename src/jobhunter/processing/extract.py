@@ -482,6 +482,26 @@ async def consolidate(
         # drop the whole inferences block to a facets fallback.
         retry_policy="strict",
     )
+    # v0.3.2 hotfix — A: chat()+JSON regex fallback when ccswitch / relay returns
+    # plain text instead of a tool_use block. Same pattern as
+    # `list_company_entities()` (llm/client.py:344). Without this, a single
+    # transient relay degradation during the most-valuable LLM call (cross-
+    # domain synthesis) would drop the entire inferences block to raw-facets
+    # fallback — losing the cross-domain "this team's vibe contradicts the
+    # news coverage" insights that only this step produces.
+    if not raw:
+        try:
+            import json as _json
+            import re as _re
+            chat_text = await llm.chat(
+                system=CONSOLIDATE_SYSTEM,
+                user=user + "\n\n重要：只返回合法 JSON，不要任何解释。",
+            )
+            m = _re.search(r"\{.*\}", chat_text, _re.DOTALL)
+            if m:
+                raw = _json.loads(m.group(0))
+        except Exception:  # noqa: BLE001 - best-effort fallback
+            pass
     if not raw:
         # Best-effort: stub from raw inputs
         return AggregatedFindings(

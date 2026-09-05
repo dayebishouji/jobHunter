@@ -194,32 +194,50 @@ class LLMClient:
             retry = _strict_retry(self._settings)
         else:
             retry = self._retry
-        response = await retry(_do_call)
 
-        # Bookkeeping
-        self._tokens_in += response.usage.input_tokens
-        self._tokens_out += response.usage.output_tokens
-        if self._tokens_in + self._tokens_out > self._settings.budget_tokens_per_run:
-            self._budget_blocked = True
+        # v0.3.2 hotfix — B: retry on "no tool_use block" responses.
+        # ccswitch / relay sometimes returns plain text instead of a tool_use
+        # block — this isn't an exception so tenacity's exception-based retry
+        # doesn't fire. Wrap the call with an explicit retry loop that
+        # detects text-only responses and re-prompts. The default policy
+        # retries twice; strict retries once (tenacity handles transport
+        # retries separately).
+        import asyncio as _asyncio
+        max_text_retries = 1 if retry_policy == "strict" else 2
+        response = None
+        for _attempt in range(max_text_retries + 1):
+            response = await retry(_do_call)
 
-        # Find the tool_use block
-        for block in response.content:
-            if getattr(block, "type", None) == "tool_use":
-                payload = block.input
-                # v0.2.2 — cache successful responses only. Empty dict payloads
-                # (LLM failure path) are NOT cached to avoid poisoning.
-                if payload:
-                    self._cache.set(system, user, tool_name, payload)
-                return payload
+            # Bookkeeping (counted on every attempt)
+            self._tokens_in += response.usage.input_tokens
+            self._tokens_out += response.usage.output_tokens
+            if self._tokens_in + self._tokens_out > self._settings.budget_tokens_per_run:
+                self._budget_blocked = True
 
-        # Some ccswitch / relay responses lose tool_use blocks. Surface what we
-        # actually got so the user can diagnose (e.g., relay returned text instead).
-        block_types = [getattr(b, "type", "?") for b in response.content]
-        stop_reason = getattr(response, "stop_reason", "?")
-        logger.warning(
-            "No tool_use block for %s (got block types=%s, stop_reason=%s); returning empty",
-            tool_name, block_types, stop_reason,
-        )
+            # Did we get a tool_use block?
+            for block in response.content:
+                if getattr(block, "type", None) == "tool_use":
+                    payload = block.input
+                    if payload:
+                        self._cache.set(system, user, tool_name, payload)
+                    return payload
+
+            # No tool_use. Surface what we got and decide whether to retry.
+            block_types = [getattr(b, "type", "?") for b in response.content]
+            stop_reason = getattr(response, "stop_reason", "?")
+            if _attempt < max_text_retries:
+                logger.warning(
+                    "No tool_use block for %s (got block types=%s, stop_reason=%s); retrying (%d/%d)",
+                    tool_name, block_types, stop_reason,
+                    _attempt + 1, max_text_retries,
+                )
+                await _asyncio.sleep(1.5 * (_attempt + 1))  # 1.5s, 3s
+                continue
+            # Out of retries — log final failure
+            logger.warning(
+                "No tool_use block for %s (got block types=%s, stop_reason=%s); returning empty after %d attempts",
+                tool_name, block_types, stop_reason, max_text_retries + 1,
+            )
         return {}
 
 
