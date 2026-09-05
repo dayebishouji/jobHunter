@@ -258,7 +258,9 @@ class TestV0119CollectorOnePass:
 
     async def test_no_pass2_fires_regardless_of_pass1_size(self):
         """v0.1.19 — single-pass design. Even if pass-1 returns 0, we don't
-        run a separate 'broad' pass."""
+        run a separate 'broad' pass. v0.3.4 — adds a blind (no-allowlist)
+        fallback of 3 calls when main loop yields 0; that layer is
+        deliberately distinct from v0.1.18's keyword allowlist pass-2."""
         from jobhunter.collectors.tavily_reviews import TavilyReviewsCollector
         from jobhunter.config import Settings
         from jobhunter.models.query import CompanyQuery
@@ -274,10 +276,9 @@ class TestV0119CollectorOnePass:
         coll = TavilyReviewsCollector(Settings(), tavily=_Stub())
         result = await coll.collect(CompanyQuery(company="棒谷科技"))
 
-        # All review_queries() calls run, no extra pass-2.
-        # v0.1.22 hotfix — 20 GENERAL_REVIEW_DOMAINS × 2 names = 40 calls
-        # (was 30 under the old 15-domain truncation contract).
-        assert call_count == 40
+        # v0.1.22 hotfix — 20 GENERAL_REVIEW_DOMAINS × 2 names = 40 main calls
+        # v0.3.4 — +3 blind fallback calls (no allowlist) when main is empty
+        assert call_count == 43
         assert result.items == []
         assert result.error == "no_results"
 
