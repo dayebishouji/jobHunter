@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 459 tests
+pytest                        # 489 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.2.0）
+## 已知限制（v0.2.2）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -109,7 +109,8 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.23 修 reviews 章 LLM 抽取失败时兜底被跳过**：v0.1.14 加的 `_loose_keyword_reviews()` 兜底原本被 `isinstance(rf, ReviewFacts)` 卡住 — LLM 抽取返回 `None` 时 `rf=None` → isinstance=False → 兜底永不执行，reviews 章空即使 raw bucket 有 100+ 职场 URL。美的 / 美团 / 字节跳动三次实测都中招（cache 显示 157 个 牛客/脉脉/知乎/看准 URL 进 reviews bucket，但报告全空）。现在去掉 isinstance 闸门：reviews_items 非空就一定跑兜底，LLM 失败时直接用 loose 作为整个 facet，LLM 有结果时 merge。测试 +3，443 → 446 pass
 - **v0.2.0 视觉 + 内容双重重写（broker research + 招股书 hybrid）**：报告结构 redesign — masthead → cover 摘要（top thesis 句 + KPI 带 + 5 轴雷达 + snapshot diff + 来源 chip wall + collector soft-fail 横幅）+ 7 个编号章节（I-VII：公司画像 / 工商 / 司法 / 薪酬 / 加班 / 氛围 / 舆情）+ 4 个侧栏章节（面试准备 / 同行业对比 / JD 对照 / tail 推断 / 缺口 / Σ 来源）+ 风险提示 + Σ 来源附录 + footer。视觉 token：paper-cream `#fbfaf6` + broker-blue `#1a3a6e` + Noto Serif SC（display）/ Sans SC（UI）/ Mono（数据）。`DESIGN.md` 是 token 单一来源，`report.html.j2` 顶部 5 段方向契约是设计回归门。`compute_chapter_stories` / `compute_axes` / `compute_overall_verdict` / `compute_trial_checklist` / `compute_salary_band` / `diff_snapshots` 全部 deterministic + 纯本地，零 LLM 调用。`--version` 输出 `0.2.0`。测试调整 21 个断言匹配新结构（test_report_builder + test_v0120/121/122/013/014/015/016/017），446 → 445 pass
 - **v0.2.1 落实 `docs/audits/2026-09-05-pipeline-flow-audit.md` 顶 3 推荐**：(1) **consolidate LLM 调用加 tenacity 重试** — 之前 `llm_retry()` 只捕 `httpx.TransportError` / `ConnectionError` / `TimeoutError`，5xx / 429 / 529 一闪即触发 consolidate fallback 丢跨域 inferences 块；现在 `anthropic.APIError`（覆盖所有子类 `APIConnectionError` / `APIStatusError` / `RateLimitError` / `APITimeoutError`）也进 retry tuple。`consolidate()` 进一步 opt-in `retry_policy="strict"`（≥3 尝试，max 20s backoff，`llm_retry_strict` 新函数）；`LLMClient.structured_call()` 新增 `retry_policy: str = "default"` 参数。(2) **流程图视觉强化 fallback 路径** — `pipeline.mmd` consolidate 失败的 G3→G4 边改 `==>`（粗箭头）+ `:::fail` classDef 红色填充 + edge label "AggregatedFindings = raw facets (best-effort · 整个 run 不挂)"。(3) **流程图节点折叠** — 3 个 `_build_peer_summary` 节点合 1 + "× N peers" 注脚；11 个 compute 盒按角色合 4 独立 + 1 合并盒（H_MISC 含 7 个：conflicts / confidence / collector_notes / snapshot_diff / edit_notes / signal_supports / trial_checklist）；最终渲染 7936×1848, 4.29:1 宽屏。(4) `docs/audits/2026-09-05-pipeline-flow-audit.md` 新文件 — 6 节覆盖 diagram-level (5 项) / pipeline-level (6 项) / product-level (2 项) + 推荐优先级。测试 +14 (`tests/test_v0201_retry.py` 全过)，445 → 459 pass
-- 不支持：批量多公司（watch 已有 CRUD，批跑未做）、Web 服务、Playwright
+- **v0.2.2 落实 `docs/audits/2026-09-05-pipeline-flow-audit.md` 第 4 节「下个月做」中的 2 条基础改动**：(1) **Round 2 触发条件改 type-diversity**（§2.2）—— `_needs_second_pass` 重命名为 `_round2_worthwhile`，阈值收紧到「4 个核心信号类型（salary / overtime / vibe / turnover）中 ≤ 1 个有内容才触发」，去掉冗余 `total_signals < 3` OR 子句；新增 `Round2TriggerReason` enum（`SIGNAL_TYPES_LOW` / `NO_FIRST_PASS` / `NOT_TRIGGERED`）+ 结构化 INFO 日志；辅助类型（jd_gap / slang）不计入多样性。语义修复：旧 `None → False`，新 `None → True`（NO_FIRST_PASS）—— LLM 一次失败应该再试。`extract.py:phase 2` caller 也修：`_second_pass_reviews` 接受 `first: ReviewFacts`，None 场景传空 `ReviewFacts()` 即可。(2) **LLM response disk cache**（§2.3）—— 新文件 `src/jobhunter/llm/cache.py` 的 `LLMResponseCache` 类，mirror Tavily `FileCache` 模式：SHA1[:32] key、TTL in JSON、atomic `.tmp + os.replace`、lazy eviction；cache key = SHA1(`system + '|' + user + '|' + tool_name`)；wired 进 `LLMClient.__init__` + `structured_call()` 作为 short-circuit：hit 跳过整个 API call（不计 tokens / 不走 retry）；poison 保护：空 dict 响应（LLM 失败 / budget 耗尽 / 空 tool_use）**绝不**缓存，避免 24h 锁死。`Settings.llm_cache_enabled: bool = True`（默认开，`JOBHUNTER_LLM_CACHE_ENABLED=false` 关停）。cache 目录 `<user_cache_dir>/llm_cache/`，与 Tavily cache 同级但独立子目录。`retry_policy="strict"`（consolidate）也参与 cache —— 重复 run 同公司 24h 内命中 0 成本。测试 +30（`tests/test_v0202_round2.py` 11 个 + `tests/test_v014_features.py` 3 个改名 + `tests/test_v0203_llm_cache.py` 16 个：cache 直接 API 7 + TTL 2 + admin 2 + structured_call 集成 5 含 poison guard / strict-policy / disabled 路径），459 → 489 pass。3.1 Batch 模式（`--batch FILE`，txt 一行一个公司 + # 注释）按用户决策推迟到 v0.3.1
+- 不支持：批量多公司（watch 已有 CRUD，批跑推迟到 v0.3.1 的 `--batch FILE`）、Web 服务、Playwright
 
 ## 下次接手可考虑的深度改动
 
