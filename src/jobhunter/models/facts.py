@@ -459,6 +459,20 @@ class ReviewFacts(NullTolerantListBase):
     typical_off_time_evidence: str = ""  # short quoted line, ≤30 字
     typical_off_time_url: HttpUrl | None = None
 
+    @field_validator("typical_off_time_url", mode="before")
+    @classmethod
+    def _coerce_off_time_url(cls, v):
+        """v0.3.2 hotfix — LLM sometimes returns `""` (empty string) for
+        typical_off_time_url when no source URL is available. Pydantic v2
+        treats empty string as invalid URL even though the field type is
+        `HttpUrl | None`; coerce blank / whitespace values to None so the
+        run doesn't crash on the validation step."""
+        if v is None:
+            return None
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
 
 # ---------- News ----------
 

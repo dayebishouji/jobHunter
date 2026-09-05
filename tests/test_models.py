@@ -610,3 +610,57 @@ class TestCompanyProfile:
     def test_aggregated_findings_company_profile_default_none(self):
         a = AggregatedFindings.model_validate({})
         assert a.company_profile is None
+
+
+# ---------- v0.3.2 hotfix — typical_off_time_url empty-string guard ----------
+
+class TestReviewFactsOffTimeUrlCoerce:
+    """v0.3.2 hotfix — LLM sometimes returns `""` (empty string) for
+    typical_off_time_url when no source URL is available. Pydantic v2 treats
+    empty string as invalid URL even though the type is `HttpUrl | None`.
+    The `_coerce_off_time_url` field validator turns blank / whitespace into
+    None so the run doesn't crash on the validation step."""
+
+    def test_empty_string_becomes_none(self):
+        r = ReviewFacts.model_validate({
+            "typical_off_time": "约 10 PM",
+            "typical_off_time_url": "",
+        })
+        assert r.typical_off_time_url is None
+
+    def test_whitespace_becomes_none(self):
+        r = ReviewFacts.model_validate({
+            "typical_off_time": "约 10 PM",
+            "typical_off_time_url": "   ",
+        })
+        assert r.typical_off_time_url is None
+
+    def test_none_passes_through(self):
+        r = ReviewFacts.model_validate({
+            "typical_off_time": "约 10 PM",
+            "typical_off_time_url": None,
+        })
+        assert r.typical_off_time_url is None
+
+    def test_valid_url_passes_through(self):
+        r = ReviewFacts.model_validate({
+            "typical_off_time": "约 10 PM",
+            "typical_off_time_url": "https://www.zhihu.com/question/123",
+        })
+        assert str(r.typical_off_time_url) == "https://www.zhihu.com/question/123"
+
+    def test_empty_url_does_not_crash_full_review_facts(self):
+        """The original bug: full ReviewFacts with empty url crashed the LLM
+        extract step. This is the regression the hotfix pins."""
+        r = ReviewFacts.model_validate({
+            "typical_off_time": "约 10:00 PM",
+            "typical_off_time_evidence": "团队普遍约 10 点离开",
+            "typical_off_time_url": "",  # the failure case
+            "salary_signals": [],
+            "overtime_signals": [],
+            "turnover_signals": [],
+            "vibe_signals": [],
+        })
+        assert r.typical_off_time == "约 10:00 PM"
+        assert r.typical_off_time_url is None
+        assert r.typical_off_time_evidence == "团队普遍约 10 点离开"
