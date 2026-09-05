@@ -3,11 +3,50 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>反向背调 · {{ data.query.company }}</title>
+<title>尽调备忘 · {{ data.query.company }}</title>
+<meta name="description" content="jobHunter 反向背调报告 — {{ data.query.company }} · {{ data.query.position or '' }} · {{ data.query.city or '' }}" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Sans+Mono:wght@400;500;700&display=swap" />
+<style>{{ css | safe }}</style>
+</head>
+<body>
 
-{# === Macro: render per-chapter confidence badge near chapter title === #}
+{# ============================================================
+   THESIS: 把尽调备忘录做成中文金融圈的「深度研报 + 招股书」混搭 — 严肃、可信、决断。
+   读者一眼看到 5 轴雷达 + 司法干净 + 薪酬 band 这种券商口径的尽调语言,
+   把"个人反向背调"从笔记升格为个人尽调备忘录。
+
+   OWN-WORLD: paper-cream #fbfaf6 底, ink #1a1a1a 正文, broker-blue #1a3a6e brand accent;
+   status colors 深绿 #2e7d32 / 朱红 #c62828 / 琥珀 #b8854a;
+   Noto Serif SC (display+body), Noto Sans SC (UI labels), Noto Sans Mono (data values);
+   masthead with 报告编号 / 评级 badge / 日期;
+   numbered chapters (I-VII) with section-break rules;
+   data tables with right-aligned numbers and ¥ prefix;
+   投资要点 numbered list + 风险提示 disclaimer footer + Σ 来源附录.
+
+   STORY: 90 秒读到 5 轴雷达 + 顶层 verdict + 3-5 行投资要点 — 一眼判生死;
+   5 分钟读到司法 / 薪酬 / 加班 / 氛围 / 舆情 / 面试 全部信号密度;
+   1 个月内带着 1mo / 3mo / 6mo 试用期观察清单做 action。
+
+   FIRST VIEWPORT: 顶部 masthead (jobHunter RESEARCH · 报告 № · 标的 · 评级 · 日期);
+   主体 投资要点 3-5 行 + 主编按编辑按;
+   中段 3 栏 KPI grid (综合分 / 司法 / 加班);
+   5 轴雷达 + 薪酬 band + 数据源 chip 墙 (本报告综合了 X 条信号 / Y 个平台).
+
+   FORM: 券商深度研报 + 招股书 hybrid, 视觉种子 broker-research-prospectus-v1, skill impeccable.
+
+   FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.
+   ============================================================ #}
+
+<div class="page">
+
+{# ============================================================
+   MACROS
+   ============================================================ #}
+
+{# --- Confidence badge near chapter title --- #}
 {% macro conf_badge(chapter_key) -%}
   {% set c = data.chapter_confidence.get(chapter_key) %}
   {% if c and confidence_label and c != 'high' %}
@@ -16,11 +55,7 @@
   {% endif %}
 {%- endmacro %}
 
-{# === Macro: v0.1.13 — 编辑手记 aside + 数据故事 lines ===
-   Renders a single block per chapter showing:
-   - <aside class="edit-note">…</aside> if edit_notes has this chapter
-   - <ul class="data-story">…</ul> if data_stories has this chapter
-   Both are pure deterministic content from builder.compute_chapter_stories(). #}
+{# --- Per-chapter editorial aside (编辑手记 + 数据故事) --- #}
 {% macro story_block(chapter_key) -%}
   {% set en = edit_notes.get(chapter_key) %}
   {% set ds = data_stories.get(chapter_key) %}
@@ -28,7 +63,7 @@
   <aside class="story-block" aria-label="编辑手记与数据故事">
     {% if en %}
     <div class="edit-note">
-      <span class="edit-note-tag">编辑手记</span>
+      <span class="edit-note-tag">编按</span>
       <span class="edit-note-body">{{ en }}</span>
     </div>
     {% endif %}
@@ -43,8 +78,7 @@
   {% endif %}
 {%- endmacro %}
 
-{# === Macro: v0.1.16 — per-signal age badge (「X 月前」/「X 年前」)
-   Falls back silently when the signal has no `published_at`. === #}
+{# --- Per-signal age badge --- #}
 {% macro signal_age_badge(s) -%}
   {% if s and s.published_at %}
     {% set today = data.generated_at.date() if data.generated_at and data.generated_at.date is defined else data.now_date %}
@@ -61,1239 +95,1178 @@
     {% endif %}
   {% endif %}
 {%- endmacro %}
-<link rel="stylesheet"
-  href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;700&display=swap" />
-<style>{{ css | safe }}</style>
-</head>
-<body>
-<div class="container">
 
-{# ---------- Masthead ---------- #}
+{# --- Per-signal evidence card with full metadata (source + age + tier) --- #}
+{% macro signal_card(s, kind) -%}
+  {% set url_str = s.url|string if s.url else '' %}
+  {% set support = signal_supports.get(url_str) if signal_supports else None %}
+  {% set tier = support.support_tier if support else 'unverified' %}
+  {% set tier_pair = tier_label.get(tier, (tier, 'tier-unverified')) %}
+  {% set tier_zh = tier_pair[0] %}
+  {% set tier_cls = tier_pair[1] %}
+  <li class="signal-card signal-card-{{ kind }}" data-tier="{{ tier }}">
+    <div class="signal-card-meta">
+      <span class="signal-tier {{ tier_cls }}">{{ tier_zh }}</span>
+      {{ signal_age_badge(s) }}
+      {% if url_str %}
+        <a class="signal-source" href="{{ url_str }}" target="_blank" rel="noopener" title="{{ url_str }}">
+          {% set parts = url_str.split('/') %}
+          {% set host = parts[2] if parts|length >= 3 else url_str %}
+          {{ host|replace('www.', '')|replace('m.', '') }}
+        </a>
+      {% endif %}
+      {% if s.sentiment %}
+        <span class="signal-sentiment signal-sentiment-{{ s.sentiment }}">
+          {% if s.sentiment == 'positive' %}正面{% elif s.sentiment == 'negative' %}负面{% else %}中性{% endif %}
+        </span>
+      {% endif %}
+    </div>
+    <blockquote class="signal-evidence">"{{ s.evidence }}"</blockquote>
+  </li>
+{%- endmacro %}
+
+{# --- Data source chip wall (本报告综合了 X 条信号 / Y 个平台) --- #}
+{% macro source_chip_wall(sources) -%}
+  {% set brand_map = {
+    'zhihu.com': ('知', '知乎', '#0084ff'),
+    'maimai.cn': ('脉', '脉脉', '#1a3a6e'),
+    'kanzhun.com': ('看', '看准', '#ff6b35'),
+    '36dianping.com': ('36', '看准点评', '#3eaf7c'),
+    'nowcoder.com': ('牛', '牛客', '#34c759'),
+    '1point3acres.com': ('亩', '一亩三分地', '#5b8def'),
+    'zhipin.com': ('BOSS', 'BOSS直聘', '#00b1a5'),
+    'lagou.com': ('拉', '拉勾', '#00b0ff'),
+    'v2ex.com': ('V', 'V2EX', '#778899'),
+    'douban.com': ('豆', '豆瓣', '#00b51d'),
+    'weibo.com': ('微', '微博', '#e6162d'),
+    'weixin.qq.com': ('信', '微信公众号', '#07c160'),
+    'xiaohongshu.com': ('红', '小红书', '#ff2442'),
+    'douyin.com': ('抖', '抖音', '#161823'),
+    'bilibili.com': ('B', 'B站', '#fb7299'),
+    '36kr.com': ('36', '36氪', '#4285f4'),
+    'huxiu.com': ('虎', '虎嗅', '#222222'),
+    'lieyunwang.com': ('猎', '猎云网', '#222222'),
+    'chuangsanjia.com': ('创', '创业邦', '#222222'),
+    'itjuzi.com': ('桔', 'IT桔子', '#ff6e00'),
+    'qcc.com': ('查', '企查查', '#d32f2f'),
+    'tianyancha.com': ('天', '天眼查', '#1976d2'),
+    'aiqicha.baidu.com': ('爱', '爱企查', '#2932e1'),
+    'wikipedia.org': ('维', '维基百科', '#999999'),
+    'baike.baidu.com': ('百', '百度百科', '#2932e1'),
+    'wenshu.court.gov.cn': ('判', '裁判文书', '#5d4037'),
+    'gsxt.gov.cn': ('工', '国家工商', '#5d4037'),
+    'sogou.com': ('搜', '搜狗微信', '#3a8c10'),
+    'oschina.net': ('OS', 'OSChina', '#21b24b'),
+    'juejin.cn': ('掘', '掘金', '#1e80c0'),
+    'segmentfault.com': ('SF', '思否', '#009a61'),
+    'csdn.net': ('CS', 'CSDN', '#c92027'),
+    'freebuf.com': ('网', 'FreeBuf', '#2c3e50'),
+    'kanxue.com': ('看', '看雪', '#0d4d8a'),
+  } %}
+  {% set ns = namespace(seen=[], chips=[]) %}
+  {% for src in sources %}
+    {% set host = src.domain.split('/')[0] if src.domain else '' %}
+    {% set brand = brand_map.get(host) %}
+    {% if brand and brand[0] not in ns.seen %}
+      {% set ns.seen = ns.seen + [brand[0]] %}
+      {% set ns.chips = ns.chips + [brand] %}
+    {% endif %}
+  {% endfor %}
+  {% if ns.chips|length > 0 %}
+  <div class="source-chip-wall" aria-label="本报告主要数据源">
+    <span class="source-chip-wall-label">本报告综合了 {{ sources|length }} 条来源 · {{ ns.chips|length }} 个平台</span>
+    <div class="source-chip-grid">
+      {% for ch in ns.chips %}
+      <span class="source-chip" style="--chip-color:{{ ch[2] }};" title="${ch[1]}">
+        <span class="source-chip-mark">{{ ch[0] }}</span>
+        <span class="source-chip-name">{{ ch[1] }}</span>
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+{%- endmacro %}
+
+{# ============================================================
+   1. MASTHEAD — research-report header bar
+   ============================================================ #}
 <header class="masthead">
-  <div class="masthead-left">jobHunter · 反向背调</div>
-  <div class="masthead-title">公司备忘录</div>
+  <div class="masthead-left">
+    <span class="masthead-brand">jobHunter RESEARCH</span>
+    <span class="masthead-tag">个人尽调备忘</span>
+  </div>
+  <div class="masthead-center">
+    <span class="masthead-ticker">报告 №&nbsp;<span class="mono">{{ '%03d'|format(((data.generated_at.timestamp()|int) % 997) + 1) }}</span></span>
+    {% set v = overall_verdict %}
+    <span class="masthead-rating masthead-rating-{{ v.level }}" title="{{ v.headline }}">
+      <span class="masthead-rating-dot"></span>
+      {{ {'recommend':'增持','caution':'中性','avoid':'减持','neutral':'观察'}[v.level] }}
+    </span>
+  </div>
   <div class="masthead-right">
-    <span class="mono">{{ data.generated_at.strftime('%Y-%m-%d') }}</span> · 第 {{ now.strftime('%V') }} 周
+    <span class="mono">{{ data.generated_at.strftime('%Y-%m-%d') }}</span>
+    <span class="masthead-week">第 {{ now.strftime('%V') }} 周</span>
   </div>
 </header>
 
-{# ---------- Hero ---------- #}
-<section class="hero">
-  <div class="hero-main">
-    <div class="hero-edition">{{ data.query.position or '岗位未指定' }} · {{ data.query.city or '城市未指定' }}</div>
-    <h1 class="hero-title">
-      {{ data.query.company }}
-      <span class="target">一份关于 {{ data.query.company }} 的尽调备忘</span>
-    </h1>
-    <div class="hero-meta">
-      <span><span class="meta-key">置信度</span>
-        <span class="pill {{ data.overall_confidence }}">
-          {{ {'high':'高置信','medium':'中等置信','low':'低置信'}[data.overall_confidence] }}
-        </span>
-      </span>
-      <span><span class="meta-key">综合分</span>
-        <span class="meta-val mono">{{ '%.1f'|format(avg_score) }} / 5.0</span>
-      </span>
-      <span><span class="meta-key">数据维度</span>
-        <span class="meta-val mono">
-          {{ (1 if data.company_profile else 0) + (1 if data.business_facts else 0) + (1 if data.review_facts else 0) + (1 if data.news_facts else 0) + (1 if data.judicial_facts else 0) }}/5
-        </span>
-      </span>
-      <span><span class="meta-key">来源</span>
-        <span class="meta-val mono">{{ sources|length }} 条</span>
-      </span>
-      <span><span class="meta-key">数据多样性</span>
-        {% set dk = diversity_kpi %}
-        <span class="pill {{ 'high' if dk.tier_label_zh == '高' else ('medium' if dk.tier_label_zh == '中' else 'low') }}" title="{{ dk.corroborated_count }} 条多源印证 / {{ dk.distinct_domains|length }} 个独立域 / {{ dk.total_signals }} 条 signal">
-          {{ dk.tier_label_zh }} · {{ dk.corroborated_count }}/{{ dk.total_signals }} 印证
-        </span>
-      </span>
-    </div>
+{# ============================================================
+   2. COVER — investment-thesis block + KPI grid + radar + verdict
+   ============================================================ #}
+<section class="cover">
 
-    {% set cp = data.company_profile %}
-    {% if cp and cp.description %}
-      <p class="hero-summary">
-        {{ cp.description }}
-        {% if cp.headquarters or cp.company_size or cp.funding_stage %}
-          <strong>
-            {%- if cp.headquarters %}总部位于 {{ cp.headquarters }}{% endif -%}
-            {%- if cp.company_size %} · {{ cp.company_size }}{% endif -%}
-            {%- if cp.funding_stage %} · {{ cp.funding_stage }}{% endif -%}
-            {%- if cp.founded_year %} · 成立 {{ cp.founded_year }}{% endif -%}
-          </strong>
+  {# --- Top: 标的 + 副标题 + 主编按 --- #}
+  <div class="cover-top">
+    <div class="cover-title-block">
+      <div class="cover-edition">
+        <span class="cover-edition-key">标的</span>
+        <span class="cover-edition-position">{{ data.query.position or '岗位未指定' }}</span>
+        <span class="cover-edition-sep">·</span>
+        <span class="cover-edition-city">{{ data.query.city or '城市未指定' }}</span>
+        {% set dimensions = (1 if data.company_profile else 0) + (1 if data.business_facts else 0) + (1 if data.review_facts else 0) + (1 if data.news_facts else 0) + (1 if data.judicial_facts else 0) %}
+        <span class="cover-edition-meta">综合分 <span class="mono">{{ '%.1f'|format(avg_score) }}</span> / 5.0 · {{ dimensions }} 维度</span>
+      </div>
+      <h1 class="cover-title">
+        <span class="cover-company">{{ data.query.company }}</span>
+        <span class="cover-title-dek">一份关于 {{ data.query.company }} 的尽调备忘</span>
+      </h1>
+      {% if data.company_profile and (data.company_profile.business_scope or data.company_profile.motto) %}
+      <p class="cover-summary">
+        {% if data.company_profile.motto %}
+          <span class="cover-motto">「{{ data.company_profile.motto }}」</span>
+        {% endif %}
+        {% if data.company_profile.business_scope %}
+          <span class="cover-scope">{{ data.company_profile.business_scope }}</span>
         {% endif %}
       </p>
-    {% endif %}
-  </div>
-
-  <aside class="hero-side">
-    <div class="hero-ring">
-      <div class="hero-ring-label">综合健康度</div>
-      {{ hero_ring_svg | safe }}
+      {% endif %}
     </div>
 
-    {% set lowest = (data.axes | sort(attribute='stars'))[0] if data.axes else None %}
-    {% if lowest %}
-      <div class="hero-dispatch">
-        <span class="dispatch-label">主编按</span>
-        最弱维度是 <strong>{{ lowest.label_zh }}</strong> ({{ lowest.stars }}/5)——{{ lowest.rationale }}
-      </div>
-    {% endif %}
+    {# --- 主编按 editorial aside --- #}
+    {% set dispatch_text = edit_notes.get('cover') or v.headline %}
+    <aside class="cover-dispatch">
+      <span class="cover-dispatch-tag">主编按</span>
+      <div class="cover-dispatch-body">{{ dispatch_text }}</div>
+      {% if v.reasons and v.reasons|length > 0 %}
+      <ol class="cover-dispatch-reasons">
+        {% for r in v.reasons[:3] %}
+        <li>{{ r }}</li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+    </aside>
+  </div>
 
-    {# v0.1.16 — top-level verdict (recommend / caution / avoid / neutral) #}
-    {% if overall_verdict %}
-      {% set v = overall_verdict %}
-      <div class="hero-verdict hero-verdict-{{ v.level }}" aria-label="综合判断">
-        <div class="hero-verdict-level">
-          {% if v.level == 'recommend' %}建议接 offer
-          {% elif v.level == 'caution' %}建议谨慎
-          {% elif v.level == 'avoid' %}建议避开
-          {% else %}信息有限{% endif %}
-        </div>
-        <div class="hero-verdict-headline">{{ v.headline }}</div>
-        {% if v.reasons %}
-          <ul class="hero-verdict-reasons">
-            {% for r in v.reasons %}<li>{{ r }}</li>{% endfor %}
-          </ul>
+  {# --- Mid: 投资要点 (3-5 numbered bullets) --- #}
+  <section class="thesis" aria-label="投资要点">
+    <div class="thesis-head">
+      <span class="thesis-head-label">投资要点</span>
+      <span class="thesis-head-en">Investment Thesis</span>
+    </div>
+    <ol class="thesis-list">
+      {% set thesis_items = data_stories.get('thesis') or [] %}
+      {% if thesis_items|length > 0 %}
+        {% for line in thesis_items %}
+        <li class="thesis-item"><span class="thesis-num">{{ loop.index }}</span><span class="thesis-text">{{ line }}</span></li>
+        {% endfor %}
+      {% else %}
+        {# Fallback: derive a few theses from data #}
+        {% if data.overall_confidence %}
+        <li class="thesis-item"><span class="thesis-num">1</span><span class="thesis-text">本备忘录数据置信度为「{{ {'high':'高','medium':'中','low':'低'}[data.overall_confidence] }}」, {{ dimensions }} 维度中 {{ (1 if data.company_profile else 0) + (1 if data.business_facts else 0) + (1 if data.review_facts else 0) + (1 if data.news_facts else 0) + (1 if data.judicial_facts else 0) }} 维度已抓取</span></li>
+        {% endif %}
+        <li class="thesis-item"><span class="thesis-num">2</span><span class="thesis-text">综合得分 <span class="mono">{{ '%.1f'|format(avg_score) }}</span> / 5.0, 见下方 5 轴雷达分布</span></li>
+        <li class="thesis-item"><span class="thesis-num">3</span><span class="thesis-text">本页报告全部信号可溯源, 详见 Σ 来源附录</span></li>
+      {% endif %}
+    </ol>
+  </section>
+
+  {# --- Mid: KPI grid (3 columns) --- #}
+  <section class="kpi-grid" aria-label="核心 KPI">
+    {% set dims = (1 if data.company_profile else 0) + (1 if data.business_facts else 0) + (1 if data.review_facts else 0) + (1 if data.news_facts else 0) + (1 if data.judicial_facts else 0) %}
+    <div class="kpi-cell">
+      <div class="kpi-key">综合分</div>
+      <div class="kpi-val mono">{{ '%.1f'|format(avg_score) }}<span class="kpi-unit"> / 5.0</span></div>
+      <div class="kpi-sub">5 轴雷达均值</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-key">司法风险</div>
+      <div class="kpi-val mono">
+        {% if data.judicial_facts %}
+          {{ data.judicial_facts.case_count_total or 0 }}<span class="kpi-unit"> 起</span>
+        {% else %}
+          —<span class="kpi-unit"></span>
         {% endif %}
       </div>
-    {% endif %}
-
-    {# v0.1.17 — vs 上次 (snapshot diff). Renders only when a prior run exists in cache. #}
-    {% if snapshot_diff %}
-      <div class="hero-snapshot-diff" aria-label="数据变化 vs 上次">
-        <div class="hero-snapshot-head">
-          <span class="hero-snapshot-label">vs 上次 ({{ snapshot_diff.days_ago }} 天前)</span>
-        </div>
-        <ul class="hero-snapshot-lines">
-          {% for ln in snapshot_diff.lines %}
-            <li class="snap-line snap-{{ ln.tone }}">
-              <span class="snap-icon">{{ ln.icon }}</span>
-              <span class="snap-label">{{ ln.label }}</span>
-              <span class="snap-arrow">{{ ln.before }} → {{ ln.after }}</span>
-              {% if ln.delta %}<span class="snap-delta">({{ ln.delta }})</span>{% endif %}
-            </li>
-          {% endfor %}
-        </ul>
+      <div class="kpi-sub">
+        {% if data.judicial_facts and (data.judicial_facts.case_count_total or 0) == 0 %}
+          公开记录中未见诉讼
+        {% elif data.judicial_facts %}
+          公开记录可查
+        {% else %}
+          本次未能取得
+        {% endif %}
       </div>
-    {% endif %}
-
-    {% if data.axes %}
-    <div class="hero-radar">
-      <div class="hero-ring-label">风险断面</div>
-      <div class="hero-radar-svg">{{ radar_svg | safe }}</div>
     </div>
-    {% endif %}
-  </aside>
-</section>
-
-{# ---------- 5-axis ribbon ---------- #}
-{% if data.axes %}
-<section class="axis-ribbon">
-  {% for ax in data.axes %}
-  <div class="axis-ribbon-cell" data-color="{{ ax.color }}">
-    <div class="axis-ribbon-name">{{ ax.label_zh }}</div>
-    <div class="axis-ribbon-num">{{ ax.stars }}<span style="font-size:0.55em;color:var(--ink-soft);">/5</span></div>
-    <div class="axis-ribbon-bar">
-      {% for n in range(1, 6) %}
-        <span class="axis-ribbon-dot {{ 'on' if n <= ax.stars else '' }}" data-color="{{ ax.color }}"></span>
-      {% endfor %}
+    <div class="kpi-cell">
+      <div class="kpi-key">加班强度</div>
+      <div class="kpi-val mono">
+        {% if data.review_facts and data.review_facts.overtime_signals %}
+          {{ data.review_facts.overtime_signals|length }}<span class="kpi-unit"> 证据</span>
+        {% else %}
+          —<span class="kpi-unit"></span>
+        {% endif %}
+      </div>
+      <div class="kpi-sub">
+        {% if data.review_facts and data.review_facts.typical_off_time %}
+          典型下班 {{ data.review_facts.typical_off_time }}
+        {% else %}
+          UGC 真实体感
+        {% endif %}
+      </div>
     </div>
-  </div>
-  {% endfor %}
-</section>
-{% endif %}
+  </section>
 
-{# ====================== JD 对照清单 (v0.1.16) ====================== #}
-{% if jd_alignment %}
-<section class="jd-alignment" aria-label="JD 对照清单">
-  <div class="jd-alignment-head">
-    <div class="jd-alignment-title">JD 对照清单</div>
-    <div class="jd-alignment-dek">
-      你提供的 JD 提到的招聘承诺 vs 公开评价中能核对的事实
+  {# --- Mid: 5 axis radar + verdict + 薪酬 band --- #}
+  <section class="cover-viz" aria-label="5 轴雷达 + 薪酬 band + 顶层判断">
+    <div class="cover-radar">
+      <div class="cover-radar-label">5 轴雷达</div>
+      <div class="cover-radar-svg">{{ radar_svg | safe }}</div>
     </div>
-  </div>
-  <ul class="jd-claim-list">
-    {% for c in jd_alignment %}
-      <li class="jd-claim jd-claim-{{ c.status }}">
-        <span class="jd-claim-icon">
-          {%- if c.status == 'confirmed' -%}✓
-          {%- elif c.status == 'contradicted' -%}✗
-          {%- else -%}?
-          {%- endif -%}
-        </span>
-        <div class="jd-claim-body">
-          <div class="jd-claim-text"><strong>{{ c.claim }}</strong>{% if c.matched_text %} <span class="muted">「{{ c.matched_text }}」</span>{% endif %}</div>
-          <div class="jd-claim-reason muted">{{ c.reasoning }}</div>
+    <div class="cover-verdict cover-verdict-{{ v.level }}">
+      <div class="cover-verdict-level">{{ {'recommend':'增持','caution':'中性','avoid':'减持','neutral':'观察'}[v.level] }}</div>
+      <div class="cover-verdict-headline">{{ v.headline }}</div>
+      {% if v.reasons and v.reasons|length > 0 %}
+      <ul class="cover-verdict-reasons">
+        {% for r in v.reasons %}
+        <li>{{ r }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% if salary_band %}
+    <div class="cover-band">
+      <div class="cover-band-label">薪酬 band</div>
+      <div class="cover-band-row">
+        <span class="cover-band-p25 mono">¥{{ salary_band.p25 }}K</span>
+        <div class="cover-band-track">
+          <div class="cover-band-fill" style="--p25:{{ ((salary_band.p25 - salary_band.p25) / (salary_band.p75 - salary_band.p25) * 100)|round(1) }}%; --p75:100%;"></div>
+          <div class="cover-band-median" title="P50 中位">
+            <span class="mono">¥{{ salary_band.p50 }}K</span>
+          </div>
         </div>
-      </li>
-    {% endfor %}
-  </ul>
+        <span class="cover-band-p75 mono">¥{{ salary_band.p75 }}K</span>
+      </div>
+      <div class="cover-band-sub">中位偏上 10-15% 是议价空间</div>
+    </div>
+    {% endif %}
+  </section>
+
+  {# --- Bottom: data source chip wall + collector soft-fail notes + snapshot diff --- #}
+  <section class="cover-foot">
+    {{ source_chip_wall(sources) }}
+    {% if data.collector_notes and (data.collector_notes.get('sogou_weixin') or data.collector_notes.get('gsxt') or data.collector_notes.get('wenshu')) %}
+    <div class="collector-notes" aria-label="数据源软失败提示">
+      {% if data.collector_notes.get('sogou_weixin') %}
+        {% set sw_note = data.collector_notes.get('sogou_weixin') %}
+        <span class="collector-note">
+          ⚠ 搜狗微信搜索被反爬拦截 — 部分公众号内容未纳入。
+          <a href="https://weixin.sogou.com/?query={{ data.query.company|urlencode }}" target="_blank" rel="noopener">手动核查 →</a>
+          {% if 'no_results' in sw_note %}<span class="collector-note-detail">(静默封禁, 未拿到任何结果)</span>{% endif %}
+        </span>
+      {% endif %}
+      {% if data.collector_notes.get('gsxt') %}
+      <span class="collector-note">
+        ⚠ 国家企业信用信息公示系统未能访问 — 工商数据可能不完整。
+        <a href="https://www.gsxt.gov.cn/" target="_blank" rel="noopener">手动核查 →</a>
+      </span>
+      {% endif %}
+      {% if data.collector_notes.get('wenshu') %}
+      <span class="collector-note">
+        ⚠ 裁判文书网未能访问 — 司法数据可能不完整。
+        <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">手动核查 →</a>
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if snapshot_diff %}
+    <div class="cover-snapshot" aria-label="vs 上次数据变化">
+      <span class="cover-snapshot-tag">vs 上次</span>
+      <span class="cover-snapshot-time">{{ snapshot_diff.days_ago }} 天前</span>
+      <ul class="cover-snapshot-lines">
+        {% if snapshot_diff.verdict_changed %}
+        <li><span class="snap-key">判断</span><span class="snap-delta snap-delta-{{ snapshot_diff.verdict_changed }}">{{ snapshot_diff.verdict_changed }}</span></li>
+        {% endif %}
+        {% if snapshot_diff.case_delta %}
+        <li><span class="snap-key">司法</span><span class="snap-delta mono">{{ snapshot_diff.case_delta }}</span></li>
+        {% endif %}
+        {% if snapshot_diff.salary_delta %}
+        <li><span class="snap-key">薪酬 P50</span><span class="snap-delta mono">{{ snapshot_diff.salary_delta }}</span></li>
+        {% endif %}
+        {% if snapshot_diff.anomaly_changed %}
+        <li><span class="snap-key">异常</span><span class="snap-delta">{{ snapshot_diff.anomaly_changed }}</span></li>
+        {% endif %}
+      </ul>
+    </div>
+    {% endif %}
+  </section>
+
 </section>
-{% endif %}
 
-{# ====================== CHAPTER I — 公司画像 ====================== #}
-<div class="chapters-container" id="chapters-container">
-<button type="button" class="reorder-reset" id="reorder-reset" hidden title="恢复默认章节顺序">↺ 重置章节顺序</button>
+{# ============================================================
+   3. MAIN — numbered chapters (I-VII)
+   ============================================================ #}
+<main class="chapters-container">
 
-<section class="chapter" id="ch-company" draggable="true" data-chapter-key="company">
+{# ============================================================
+   I. 公司画像
+   ============================================================ #}
+<section class="chapter" id="ch-company" data-chapter-key="company">
   <header class="chapter-head">
-    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>I<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num">I</div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">公司画像 {{ conf_badge('company') }}</h2>
-      <p class="chapter-dek">主营业务、产品矩阵、融资轨迹与前景——读懂这家公司是谁</p>
+      <p class="chapter-dek">主营业务、产品矩阵、融资轨迹与规模 — 这家公司是谁</p>
     </div>
   </header>
+
   {{ story_block('company') }}
 
   {% set cp = data.company_profile %}
-  {% if not cp %}
-    <p class="empty">公司画像数据缺失。可人工到 <a href="https://baike.baidu.com/" target="_blank" rel="noopener">百度百科</a> / <a href="https://www.itjuzi.com/" target="_blank" rel="noopener">IT 桔子</a> / <a href="https://www.qcc.com/" target="_blank" rel="noopener">企查查</a> 搜索 "{{ data.query.company }}" 核实主营业务、融资阶段与规模。</p>
-  {% else %}
-
-  {% if cp.prospects %}
+  {% if cp %}
   <div class="chapter-takeaway">
-    <div class="chapter-takeaway-tag">一句话结论</div>
-    <div>{{ cp.prospects }}</div>
+    <span class="chapter-takeaway-tag">一句话</span>
+    {{ data.query.company }} 主营 {{ cp.industries[0] if cp.industries else '业务未抓取' }}{% if cp.founded_at %} · 成立 {{ cp.founded_at }}{% endif %}{% if cp.headquarters %} · 总部 {{ cp.headquarters }}{% endif %}
   </div>
-  {% endif %}
 
-  {# Stat strip — the at-a-glance facts #}
-  <div class="stat-strip">
-    {% if cp.official_website %}
-    <div class="stat">
-      <div class="stat-key">官网</div>
-      <div class="stat-val" style="font-size:16px;"><a href="{{ cp.official_website }}" target="_blank" rel="noopener">{{ cp.official_website.host }}</a></div>
+  <div class="data-table">
+    <div class="data-row">
+      <div class="data-cell data-cell-key">主营业务</div>
+      <div class="data-cell">{{ cp.business_scope or '—' }}</div>
+    </div>
+    <div class="data-row">
+      <div class="data-cell data-cell-key">所属行业</div>
+      <div class="data-cell">
+        {% for ind in cp.industries %}<span class="chip">{{ ind }}</span>{% endfor %}
+      </div>
+    </div>
+    <div class="data-row">
+      <div class="data-cell data-cell-key">员工 / 参保</div>
+      <div class="data-cell mono">
+        {% if cp.employee_count %}{{ cp.employee_count }} 人{% else %}未披露{% endif %}
+        {% if cp.insured_count %} · 参保 {{ cp.insured_count }} 人{% endif %}
+      </div>
+    </div>
+    {% if cp.founded_at %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">成立</div>
+      <div class="data-cell mono">{{ cp.founded_at }}</div>
     </div>
     {% endif %}
     {% if cp.headquarters %}
-    <div class="stat">
-      <div class="stat-key">总部</div>
-      <div class="stat-val" style="font-size:18px;">{{ cp.headquarters }}</div>
-    </div>
-    {% endif %}
-    {% if cp.founded_year %}
-    <div class="stat">
-      <div class="stat-key">成立</div>
-      <div class="stat-val">{{ cp.founded_year }}<span class="unit">年</span></div>
-    </div>
-    {% endif %}
-    {% if cp.company_size %}
-    <div class="stat">
-      <div class="stat-key">规模</div>
-      <div class="stat-val" style="font-size:18px;">{{ cp.company_size }}</div>
-    </div>
-    {% endif %}
-    {# v0.1.21 — exact employee count + 社保参保人数 (stronger signal than company_size) #}
-    {% if cp.employee_count %}
-    <div class="stat">
-      <div class="stat-key">员工数</div>
-      <div class="stat-val">{{ cp.employee_count|int }}<span class="unit">人</span></div>
-    </div>
-    {% endif %}
-    {% if cp.insured_count %}
-    <div class="stat">
-      <div class="stat-key">参保人数</div>
-      <div class="stat-val">{{ cp.insured_count|int }}<span class="unit">人</span></div>
+    <div class="data-row">
+      <div class="data-cell data-cell-key">总部</div>
+      <div class="data-cell">{{ cp.headquarters }}</div>
     </div>
     {% endif %}
     {% if cp.funding_stage %}
-    <div class="stat">
-      <div class="stat-key">融资</div>
-      <div class="stat-val" style="font-size:18px;">{{ cp.funding_stage }}</div>
+    <div class="data-row">
+      <div class="data-cell data-cell-key">融资阶段</div>
+      <div class="data-cell">{{ cp.funding_stage }}</div>
     </div>
     {% endif %}
-    {% if cp.total_funding %}
-    <div class="stat">
-      <div class="stat-key">累计</div>
-      <div class="stat-val" style="font-size:18px;">{{ cp.total_funding }}</div>
+    {% if cp.investors %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">主要投资方</div>
+      <div class="data-cell">{% for inv in cp.investors %}<span class="chip chip-accent">{{ inv }}</span>{% endfor %}</div>
     </div>
     {% endif %}
   </div>
 
-  <div class="chapter-grid">
-    <div>
-      <h3 class="serif" style="font-size:20px;margin:18px 0 8px;">主营业务</h3>
-      {% if cp.main_business %}
-        <ul class="bullets">
-          {% for m in cp.main_business %}<li>{{ m }}</li>{% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty">主营业务未披露。</p>
-      {% endif %}
-
-      <h3 class="serif" style="font-size:20px;margin:24px 0 8px;">主要产品</h3>
-      {% if cp.products %}
-        <ul class="bullets">
-          {% for p in cp.products %}<li>{{ p }}</li>{% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty">产品线未披露。</p>
-      {% endif %}
-
-      {% if cp.industries %}
-      <h3 class="serif" style="font-size:20px;margin:24px 0 8px;">所属行业</h3>
-      <div>{% for ind in cp.industries %}<span class="chip chip-neutral" style="margin-right:6px;">{{ ind }}</span>{% endfor %}</div>
-      {% endif %}
-
-      {% if cp.investors %}
-      <h3 class="serif" style="font-size:20px;margin:24px 0 8px;">主要投资方</h3>
-      <div>{% for inv in cp.investors %}<span class="chip" style="margin-right:6px;color:var(--accent);border-color:var(--accent);">{{ inv }}</span>{% endfor %}</div>
-      {% endif %}
-    </div>
-
-    <aside>
-      <div class="sidebar">
-        <div class="sidebar-label">融资阶梯</div>
-        <div class="ladder">
-          {% for i in range(6) %}
-            <div class="ladder-step {{ 'current' if funding_stage_pos == i else '' }}">
-              <div class="ladder-step-current"></div>
-              <div class="ladder-step-name">
-                {% if i == 0 %}未融资
-                {% elif i == 1 %}天使
-                {% elif i == 2 %}A 轮
-                {% elif i == 3 %}B 轮
-                {% elif i == 4 %}C 及以上
-                {% elif i == 5 %}已上市
-                {% endif %}
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-        <p style="margin:8px 0 0;font-size:12px;color:var(--ink-soft);line-height:1.5;">
-          {% if cp.funding_stage %}
-            当前所处阶段: <strong style="color:var(--accent);">{{ cp.funding_stage }}</strong>
-            {% if cp.total_funding %} · 累计融资 {{ cp.total_funding }}{% endif %}
-          {% else %}
-            融资信息未披露
-          {% endif %}
-        </p>
-      </div>
-
-      {% if cp.description %}
-      <div class="sidebar">
-        <div class="sidebar-label">公司简介</div>
-        <p class="sidebar-quote">
-          {{ cp.description }}
-        </p>
-      </div>
-      {% endif %}
-    </aside>
+  {% else %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">未能取得</span>
+    公司画像数据本次未能取得。可手动到 [百度百科](https://baike.baidu.com/{{ data.query.company }}) / [天眼查](https://www.tianyancha.com/search?key={{ data.query.company }}) / [IT桔子](https://www.itjuzi.com/) 核查。
   </div>
-
-  {% if cp.source_urls %}
-  <p style="margin-top:14px;font-size:11.5px;color:var(--ink-faint);">
-    来源 · {% for url in cp.source_urls[:5] %}<a href="{{ url }}" target="_blank" rel="noopener" style="margin-right:10px;">{{ url.host }}</a>{% endfor %}
-  </p>
-  {% endif %}
   {% endif %}
 </section>
 
-{# ====================== CHAPTER II — 工商基本面 ====================== #}
-<section class="chapter" id="ch-business" draggable="true" data-chapter-key="business">
+{# ============================================================
+   II. 工商基本面
+   ============================================================ #}
+<section class="chapter" id="ch-business" data-chapter-key="business">
   <header class="chapter-head">
-    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>II<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num">II</div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">工商基本面 {{ conf_badge('business') }}</h2>
-      <p class="chapter-dek">法人、注册资本、经营状态、股权结构——法律登记视角</p>
+      <p class="chapter-dek">法人、注册资本、经营状态、股权结构 — 法律登记视角</p>
     </div>
   </header>
+
   {{ story_block('business') }}
 
-  {% set b = data.business_facts %}
-  {% if not b %}
-    <p class="empty">未能获取工商数据。建议人工到 <a href="https://www.gsxt.gov.cn/" target="_blank" rel="noopener">gsxt.gov.cn</a> 与 <a href="https://www.qcc.com/" target="_blank" rel="noopener">企查查</a> 核查 "{{ data.query.company }}" 的法人、注册资本、经营状态、是否经营异常。</p>
-  {% else %}
-  <div class="stat-strip">
-    <div class="stat"><div class="stat-key">法人</div><div class="stat-val" style="font-size:18px;">{{ b.legal_rep or '—' }}</div></div>
-    <div class="stat"><div class="stat-key">成立</div><div class="stat-val">{{ b.established_at or '—' }}</div></div>
-    <div class="stat"><div class="stat-key">注册资本</div><div class="stat-val" style="font-size:18px;">{{ b.registered_capital or '—' }}</div></div>
-    <div class="stat"><div class="stat-key">实缴</div><div class="stat-val" style="font-size:18px;">{{ b.paid_in_capital or '—' }}</div></div>
-    <div class="stat"><div class="stat-key">状态</div><div class="stat-val {{ 'good' if b.status == '存续' else ('bad' if b.status in ('注销','吊销','迁出') else '') }}" style="font-size:18px;">{{ b.status or '—' }}</div></div>
+  {% set bf = data.business_facts %}
+  {% if bf %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">一句话</span>
+    {% if bf.status == '存续' or bf.status == '在业' %}经营状态正常
+    {% elif bf.status %}经营状态: {{ bf.status }}
+    {% else %}经营状态未能确认
+    {% endif %}{% if bf.legal_rep %} · 法人 {{ bf.legal_rep }}{% endif %}{% if bf.registered_capital %} · 注册资本 {{ bf.registered_capital }}{% endif %}
   </div>
 
-  <div class="chapter-grid flip">
-    <aside>
-      {% if b.top_shareholders %}
-      <div class="sidebar">
-        <div class="sidebar-label">股东持股</div>
-        {{ shareholder_donut_svg | safe }}
-        <div class="donut-legend">
-          {% set palette_names = ['暗酒红','焦糖','驼色','浅棕','米灰'] %}
-          {% for s in b.top_shareholders[:5] %}
-          <div class="donut-legend-row">
-            <span class="donut-legend-swatch" style="background: {% if loop.index0 == 0 %}var(--accent){% elif loop.index0 == 1 %}var(--accent-2){% elif loop.index0 == 2 %}var(--caramel){% else %}var(--ink-soft){% endif %};"></span>
-            <span class="donut-legend-label">{{ s.name }}</span>
-            <span class="donut-legend-val">{{ '{:.0%}'.format(s.stake_pct/100) if s.stake_pct is not none else '—' }}</span>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-    </aside>
-
-    <div>
-      <table>
-        {% if b.address %}<tr><th style="width:110px;">注册地址</th><td>{{ b.address }}</td></tr>{% endif %}
-        {% if b.scope %}<tr><th>经营范围</th><td>{{ b.scope }}</td></tr>{% endif %}
-        {% if b.anomaly_listed %}
-        <tr><th>经营异常</th><td style="color:var(--risk-bad);font-weight:600;">已列入经营异常名录</td></tr>
-        {% endif %}
-        {% if b.external_investments_count is not none %}
-        <tr><th>对外投资</th><td>{{ b.external_investments_count }} 家</td></tr>
-        {% endif %}
-      </table>
+  <div class="data-table">
+    {% if bf.legal_rep %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">法定代表人</div>
+      <div class="data-cell">{{ bf.legal_rep }}</div>
     </div>
+    {% endif %}
+    {% if bf.registered_capital %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">注册资本</div>
+      <div class="data-cell mono">{{ bf.registered_capital }}</div>
+    </div>
+    {% endif %}
+    {% if bf.established_at %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">成立时间</div>
+      <div class="data-cell mono">{{ bf.established_at }}</div>
+    </div>
+    {% endif %}
+    {% if bf.status %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">经营状态</div>
+      <div class="data-cell">
+        <span class="chip chip-status-{{ {'存续':'ok','在业':'ok'}.get(bf.status, 'unknown') }}">{{ bf.status }}</span>
+      </div>
+    </div>
+    {% endif %}
+    {% if bf.stakeholders and bf.stakeholders|length > 0 %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key">股东结构</div>
+      <div class="data-cell">{{ shareholder_donut_svg | safe }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% else %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">未能取得</span>
+    工商数据本次未能取得。可手动到 [国家企业信用信息公示系统](https://www.gsxt.gov.cn/) / [天眼查](https://www.tianyancha.com/) / [企查查](https://www.qcc.com/) 核查。
   </div>
   {% endif %}
 </section>
 
-{# ====================== CHAPTER III — 司法风险 ====================== #}
-<section class="chapter" id="ch-judicial" draggable="true" data-chapter-key="judicial">
+{# ============================================================
+   III. 司法风险
+   ============================================================ #}
+<section class="chapter" id="ch-judicial" data-chapter-key="judicial">
   <header class="chapter-head">
-    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>III<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num">III</div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">司法风险 {{ conf_badge('judicial') }}</h2>
-      <p class="chapter-dek">诉讼、被执行——是历史欠账还是经营常态</p>
+      <p class="chapter-dek">诉讼、被执行 — 是历史欠账还是经营常态</p>
     </div>
   </header>
+
   {{ story_block('judicial') }}
 
-  {% set j = data.judicial_facts %}
-  {% set j_zero = (j is not none) and ((j.case_count_total or 0) + (j.enforcement_records or 0)) == 0 %}
-  {% if not j %}
-    {# v0.1.14 — Judicial data not fetched (gsxt/wenshu soft-fail) is honest,
-       but we still frame it as a manual-check action rather than dead air. #}
-    <div class="chapter-takeaway" style="border-left:3px solid var(--risk-mid);">
-      <div class="chapter-takeaway-tag">未能取得司法数据</div>
-      <div>公开裁判文书网在本次抓取中未命中。建议人工到 <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">wenshu.court.gov.cn</a> 和 <a href="https://zxgk.court.gov.cn/" target="_blank" rel="noopener">zxgk.court.gov.cn</a> 核查「{{ data.query.company }}」涉诉与被执行记录。</div>
+  {% set jf = data.judicial_facts %}
+  {% if jf %}
+    {% if (jf.case_count_total or 0) == 0 %}
+    <div class="chapter-takeaway chapter-takeaway-good">
+      <span class="chapter-takeaway-tag">结论</span>
+      公开记录中未发现诉讼或被执行 — 同行里相对少见的干净背景
     </div>
-  {% elif j_zero %}
-    {# v0.1.14 — Zero-record case is actually a positive signal. Reframe. #}
-    <div class="chapter-takeaway" style="border-left:3px solid var(--risk-good);">
-      <div class="chapter-takeaway-tag">公开记录中未发现诉讼或被执行</div>
-      <div>本次抓取范围内（裁判文书网 / 中国执行信息公开网 / 天眼查 / 企查查）没有命中「{{ data.query.company }}」的诉讼或被执行记录 —— 这通常是同行里相对少见的干净背景。建议正式入职前再人工核查一次（裁判文书网偶有收录延迟）。</div>
+    {% elif (jf.case_count_total or 0) > 0 %}
+    <div class="chapter-takeaway chapter-takeaway-bad">
+      <span class="chapter-takeaway-tag">警示</span>
+      公开记录发现 {{ jf.case_count_total }} 起诉讼或被执行, 详见下方时间线
     </div>
+    {% endif %}
+
+    {% if case_buckets %}
+    <div class="data-table">
+      <div class="data-row data-row-head">
+        <div class="data-cell data-cell-key">年份</div>
+        <div class="data-cell data-cell-num">诉讼数</div>
+        <div class="data-cell data-cell-num">被执行</div>
+      </div>
+      {% for b in case_buckets %}
+      <div class="data-row">
+        <div class="data-cell data-cell-key">{{ b.year }}</div>
+        <div class="data-cell data-cell-num mono">{{ b.cases }}</div>
+        <div class="data-cell data-cell-num mono">{{ b.enforcements }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if case_timeline_svg %}
+    <div class="inline-viz">
+      <div class="inline-viz-label">诉讼时间线</div>
+      <div class="inline-viz-svg">{{ case_timeline_svg | safe }}</div>
+    </div>
+    {% endif %}
+
+    {% if jf.sample_cases and jf.sample_cases|length > 0 %}
+    <div class="case-list">
+      {% for c in jf.sample_cases[:5] %}
+      <div class="case-card">
+        <div class="case-card-head">
+          <span class="case-card-title">{{ c.title }}</span>
+          {% if c.url %}<a class="case-card-link" href="{{ c.url }}" target="_blank" rel="noopener">查看原文 →</a>{% endif %}
+        </div>
+        {% if c.summary %}<div class="case-card-body">{{ c.summary }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
   {% else %}
-  <div class="stat-strip">
-    <div class="stat"><div class="stat-key">累计案件</div><div class="stat-val {{ 'bad' if (j.case_count_total or 0) > 50 else ('mid' if (j.case_count_total or 0) > 10 else 'good') }}">{{ j.case_count_total if j.case_count_total is not none else '—' }}</div></div>
-    <div class="stat"><div class="stat-key">近一年</div><div class="stat-val {{ 'bad' if (j.case_count_recent_year or 0) > 10 else ('mid' if (j.case_count_recent_year or 0) > 3 else 'good') }}">{{ j.case_count_recent_year if j.case_count_recent_year is not none else '—' }}</div></div>
-    <div class="stat"><div class="stat-key">被执行</div><div class="stat-val {{ 'bad' if (j.enforcement_records or 0) > 0 else 'good' }}">{{ j.enforcement_records or 0 }}<span class="unit">条</span></div></div>
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">未能取得</span>
+    司法数据本次未能取得。可手动到 [裁判文书网](https://wenshu.court.gov.cn/) / [执行信息公开网](https://zxgk.court.gov.cn/) 核查。
   </div>
-
-  {% if j.sample_cases %}
-  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">近 6 年案件分布</h3>
-  {{ case_timeline_svg | safe }}
-
-  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">样本案件</h3>
-  <ol class="bullets">
-    {% for c in j.sample_cases[:8] %}
-    <li>
-      <strong>{{ c.title }}</strong> · {{ c.role }}
-      {% if c.year %} · <span class="mono" style="color:var(--ink-soft);font-size:12px;">{{ c.year }} 年</span>{% endif %}
-      {% if c.url %} · <a href="{{ c.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-    </li>
-    {% endfor %}
-  </ol>
-  {% endif %}
   {% endif %}
 </section>
 
-{# ====================== CHAPTER IV — 薪酬与福利 ====================== #}
-<section class="chapter" id="ch-salary" draggable="true" data-chapter-key="reviews">
+{# ============================================================
+   IV. 薪酬
+   ============================================================ #}
+<section class="chapter" id="ch-salary" data-chapter-key="salary">
   <header class="chapter-head">
-    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>IV<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num">IV</div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">薪酬与福利 {{ conf_badge('reviews') }}</h2>
-      <p class="chapter-dek">base / 月数 / 奖金——钱给得如何,数字说了算</p>
+      <h2 class="chapter-title">薪酬 {{ conf_badge('reviews') }}</h2>
+      <p class="chapter-dek">UGC 真实月薪 + 议价空间 — 不看 offer 上的字面数</p>
     </div>
   </header>
+
   {{ story_block('reviews') }}
 
-  {# v0.1.22 — Per-collector soft-fail banner (sogou_weixin can return either
-     "anti_bot_redirect" (Sogou's JS challenge page detected) or
-     "no_results" (fetch succeeded but the result page held 0 mp.weixin.qq.com
-     links — usually a soft block from Sogou's anti-bot CDN that passed our
-     keyword check). Both should surface to the user as a manual-check hint. #}
-  {% set sogou_note = data.collector_notes.get("sogou_weixin") %}
-  {% if sogou_note in ("anti_bot_redirect", "no_results") %}
-    <div class="data-source-note">
-      <span class="data-source-note-tag">部分源未覆盖</span>
-      {% if sogou_note == "anti_bot_redirect" %}
-      搜狗微信搜索被反爬拦截 — 部分公众号评测文章未纳入本次抓取。
-      {% else %}
-      搜狗微信搜索本次未抓到公众号文章 — 可能被反爬静默拦截，也可能该公司公众号内容本身较少。
-      {% endif %}
-      建议手动到 <a href="https://weixin.sogou.com/weixin?type=2&amp;query={{ data.query.company|urlencode }}&amp;ie=utf8" target="_blank" rel="noopener">weixin.sogou.com</a> 核查「{{ data.query.company }}」相关公众号文章。
-    </div>
-  {% endif %}
+  {% set rf = data.review_facts %}
+  {% if rf and rf.salary_signals and rf.salary_signals|length > 0 %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">一句话</span>
+    本章汇总 {{ rf.salary_signals|length }} 条月薪信号
+    {% if salary_band %} · P50 ¥{{ salary_band.p50 }}K, P25 ¥{{ salary_band.p25 }}K, P75 ¥{{ salary_band.p75 }}K
+    {% endif %}
+  </div>
 
-  {% set r = data.review_facts %}
-  {% if not r or not r.salary_signals %}
-    <p class="empty">暂无薪酬爆料。可在看准网 / 脉脉 / 牛客 / 一亩三分地 / 小红书 搜索 "{{ data.query.company }}"。</p>
-  {% else %}
-  <table>
-    <thead><tr><th>岗位</th><th>月 base (K)</th><th>奖金 (月)</th><th>证据</th><th>印证</th><th>来源</th></tr></thead>
-    <tbody>
-      {% for s in r.salary_signals %}
-      <tr>
-        <td><strong>{{ s.position or '—' }}</strong> {{ signal_age_badge(s) }}</td>
-        <td class="mono">
-          {%- if s.salary_range_min_k is not none and s.salary_range_max_k is not none -%}
-            {{ '%.0f–%.0f'|format(s.salary_range_min_k, s.salary_range_max_k) }}
-            <span class="muted" style="font-size:11px;">({{ '%.0f'|format((s.salary_range_min_k + s.salary_range_max_k) / 2) }} 中位)</span>
-          {%- elif s.base_monthly_k is not none -%}
-            {{ '%.1f'|format(s.base_monthly_k) }}
-          {%- else -%}
-            —
-          {%- endif -%}
-        </td>
-        <td class="mono">{{ s.bonus_months if s.bonus_months is not none else '—' }}</td>
-        <td><span class="muted">{{ s.evidence or '—' }}</span></td>
-        {% set sup = signal_supports.get(s.url|string, {}) %}
-        {% set tier = sup.get('support_tier', 'unverified') %}
-        {% set tlabel = tier_label[tier][0] %}
-        {% set tclass = tier_label[tier][1] %}
-        <td><span class="tier-badge {{ tclass }}" title="{{ sup.get('support_count', 0) }} 个来源 / {{ sup.get('domains', [])|join(' · ') }}">{{ tlabel }}{% if sup.get('support_count', 0) > 1 %} ×{{ sup.support_count }}{% endif %}</span></td>
-        <td>{% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">来源</a>{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% if salary_band %}
+  <div class="inline-viz">
+    <div class="inline-viz-label">薪酬 band</div>
+    <div class="salary-band">
+      <div class="salary-band-row">
+        <span class="salary-band-end mono">¥{{ salary_band.p25 }}K</span>
+        <div class="salary-band-track">
+          <div class="salary-band-fill"></div>
+          <div class="salary-band-median" title="P50 中位">
+            <span class="mono">¥{{ salary_band.p50 }}K</span>
+          </div>
+        </div>
+        <span class="salary-band-end mono">¥{{ salary_band.p75 }}K</span>
+      </div>
+      <div class="salary-band-row-2">
+        <span class="salary-band-p25-label mono">P25</span>
+        <span class="salary-band-p50-label mono">P50 中位</span>
+        <span class="salary-band-p75-label mono">P75</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {% if salary_dist %}
-  <h3 class="serif" style="font-size:20px;margin:28px 0 10px;">月薪分布</h3>
-  <div class="bars-vertical">
-    {% set max_count = (salary_dist | map(attribute='count') | max) %}
-    {% for b in salary_dist %}
-    <div class="bar-v">
-      <div class="bar-v-count">{{ b.count }}</div>
-      <div class="bar-v-fill" style="height:{% if max_count > 0 %}{{ (b.count / max_count * 100)|int }}{% else %}0{% endif %}%;"></div>
-      <div class="bar-v-label">{{ b.label }}K</div>
+  <div class="data-table">
+    <div class="data-row data-row-head">
+      <div class="data-cell data-cell-key">数据点</div>
+      <div class="data-cell data-cell-num">月薪</div>
+      <div class="data-cell">来源</div>
+    </div>
+    {% for s in salary_dist %}
+    <div class="data-row">
+      <div class="data-cell data-cell-key mono">#{{ loop.index }}</div>
+      <div class="data-cell data-cell-num mono">¥{{ s.k }}K</div>
+      <div class="data-cell">{{ s.label }} {% if s.url %}<a href="{{ s.url }}" target="_blank" rel="noopener">→</a>{% endif %}</div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 
-  {# v0.1.17 — 薪酬分位带（P25 / P50 / P75）#}
-  {% if salary_band %}
-  <div class="salary-band" aria-label="薪酬分位带">
-    <div class="salary-band-head">
-      <span class="salary-band-title">薪酬分位带</span>
-      <span class="salary-band-dek">基于 {{ salary_band.n }} 条爆料</span>
-    </div>
-    <div class="salary-band-bar">
-      <span class="salary-band-min">{{ '%.0f'|format(salary_band.min) }}K</span>
-      <div class="salary-band-track">
-        <span class="salary-band-fill" style="left:{% if salary_band.max > salary_band.min %}{{ ((salary_band.p25 - salary_band.min) / (salary_band.max - salary_band.min) * 100)|int }}{% else %}0{% endif %}%; width:{% if salary_band.max > salary_band.min %}{{ ((salary_band.p75 - salary_band.p25) / (salary_band.max - salary_band.min) * 100)|int }}{% else %}0{% endif %}%;"></span>
-        <span class="salary-band-p50" style="left:{% if salary_band.max > salary_band.min %}{{ ((salary_band.p50 - salary_band.min) / (salary_band.max - salary_band.min) * 100)|int }}{% else %}0{% endif %}%;">{{ '%.0f'|format(salary_band.p50) }}K 中位</span>
-      </div>
-      <span class="salary-band-max">{{ '%.0f'|format(salary_band.max) }}K</span>
-    </div>
-    <div class="salary-band-foot">
-      <span><strong>P25</strong> {{ '%.0f'|format(salary_band.p25) }}K</span>
-      <span class="muted">·</span>
-      <span><strong>P50</strong> {{ '%.0f'|format(salary_band.p50) }}K</span>
-      <span class="muted">·</span>
-      <span><strong>P75</strong> {{ '%.0f'|format(salary_band.p75) }}K</span>
-      <span class="muted" style="margin-left: 12px;">谈薪时建议落点：中位偏上 10-15%</span>
-    </div>
+  <ul class="signal-list">
+    {% for s in rf.salary_signals %}
+      {{ signal_card(s, 'salary') }}
+    {% endfor %}
+  </ul>
+
+  {% else %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">未能取得</span>
+    薪酬数据本次未能取得。可手动到 [看准](https://www.kanzhun.com/) / [脉脉](https://maimai.cn/) / [牛客](https://www.nowcoder.com/) 核查。
   </div>
-  {% endif %}
   {% endif %}
 </section>
 
-{# ====================== CHAPTER V — 加班与工作强度 ====================== #}
-<section class="chapter" id="ch-overtime" draggable="true" data-chapter-key="reviews">
+{# ============================================================
+   V. 团队健康度 — 加班 + 离职
+   ============================================================ #}
+<section class="chapter" id="ch-team-health" data-chapter-key="team-health">
   <header class="chapter-head">
-    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>V<span class="slash">/</span><span class="total">VI</span></div>
+    <div class="chapter-num">V</div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">加班与工作强度 {{ conf_badge('reviews') }}</h2>
-      <p class="chapter-dek">节奏模式与强度——一周到底要花多少小时在这家公司</p>
+      <h2 class="chapter-title">团队健康度 {{ conf_badge('reviews') }}</h2>
+      <p class="chapter-dek">加班强度 + 离职率 — 团队是在良性运转还是在燃烧</p>
     </div>
   </header>
+
   {{ story_block('reviews') }}
 
-  {% set r = data.review_facts %}
-  {# v0.1.21 — UGC-extracted 典型下班时间 (canonical answer, surface prominently) #}
-  {% if r and r.typical_off_time %}
-    <div class="chapter-takeaway" style="border-left:3px solid var(--accent);">
-      <div class="chapter-takeaway-tag">典型下班时间</div>
-      <div>
-        团队普遍 <strong>{{ r.typical_off_time }}</strong> 下班
-        {%- if r.typical_off_time_evidence %} · <span class="muted">「{{ r.typical_off_time_evidence }}」</span>{% endif %}
-        {%- if r.typical_off_time_url %} · <a href="{{ r.typical_off_time_url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-      </div>
-    </div>
-  {% endif %}
+  {% set rf = data.review_facts %}
+  {% if rf %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">一句话</span>
+    {% if rf.typical_off_time %}
+      典型下班时间 {{ rf.typical_off_time }}{% if rf.typical_off_time_evidence %} — 「{{ rf.typical_off_time_evidence }}」{% endif %}
+    {% elif rf.overtime_signals and rf.overtime_signals|length > 0 %}
+      加班信号 {{ rf.overtime_signals|length }} 条, 详见下方
+    {% else %}
+      加班 / 离职信号本次未能取得
+    {% endif %}
+  </div>
 
-  {% if not r or not r.overtime_signals %}
-    <p class="empty">暂无加班节奏信号。</p>
-  {% else %}
-  <h3 class="serif" style="font-size:20px;margin:0 0 10px;">节奏模式分布</h3>
   {% if overtime_dist %}
-  <div>
-    {% set total = (overtime_dist | sum(attribute='count')) %}
-    {% for o in overtime_dist %}
-    <div class="dist-row">
-      <span class="dist-row-label">{{ o.pattern }}</span>
-      <span class="dist-row-bar">
-        <span class="dist-row-fill tone-{{ {'high':'bad','medium':'warn','low':'good'}[o.intensity] }}"
-              style="width:{% if total > 0 %}{{ (o.count / total * 100)|int }}{% else %}0{% endif %}%;"></span>
-      </span>
-      <span class="dist-row-meta">{{ o.count }}<span class="pct"> · {{ o.pct }}%</span></span>
+  <div class="inline-viz">
+    <div class="inline-viz-label">加班强度分布</div>
+    <div class="overtime-bars">
+      {% for b in overtime_dist %}
+      <div class="overtime-bar">
+        <div class="overtime-bar-track">
+          <div class="overtime-bar-fill" style="--w:{{ b.pct }}%; --c:{{ b.color }};"></div>
+        </div>
+        <div class="overtime-bar-label">
+          <span class="overtime-bar-key">{{ b.key }}</span>
+          <span class="overtime-bar-val mono">{{ b.count }} 条 · {{ b.pct }}%</span>
+        </div>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
   </div>
   {% endif %}
 
-  <h3 class="serif" style="font-size:20px;margin:28px 0 10px;">原始爆料</h3>
-  <ul class="bullets">
-    {% for o in r.overtime_signals %}
-    <li>
-      <span class="chip chip-{{ {'high':'bad','medium':'warn','low':'good'}[o.intensity] }}">{{ o.pattern }} · {{ {'high':'重','medium':'中','low':'轻'}[o.intensity] }}</span>
-      {{ signal_age_badge(o) }}
-      {% set sup = signal_supports.get(o.url|string, {}) %}
-      {% set tier = sup.get('support_tier', 'unverified') %}
-      {% set tlabel = tier_label[tier][0] %}
-      {% set tclass = tier_label[tier][1] %}
-      <span class="tier-badge {{ tclass }}" title="{{ sup.get('support_count', 0) }} 个来源 / {{ sup.get('domains', [])|join(' · ') }}">{{ tlabel }}{% if sup.get('support_count', 0) > 1 %} ×{{ sup.support_count }}{% endif %}</span>
-      {% if o.url %} · <a href="{{ o.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-      {% if o.evidence %}
-        <blockquote class="evidence">"{{ o.evidence }}"</blockquote>
-      {% endif %}
+  {% if rf.overtime_signals and rf.overtime_signals|length > 0 %}
+  <h3 class="subsection">加班证据</h3>
+  <ul class="signal-list">
+    {% for s in rf.overtime_signals %}
+      {{ signal_card(s, 'overtime') }}
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if rf.turnover_signals and rf.turnover_signals|length > 0 %}
+  <h3 class="subsection">离职率证据</h3>
+  <ul class="signal-list">
+    {% for s in rf.turnover_signals %}
+      {{ signal_card(s, 'turnover') }}
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% else %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">未能取得</span>
+    加班 / 离职数据本次未能取得。
+  </div>
+  {% endif %}
+</section>
+
+{# ============================================================
+   VI. 团队氛围与文化
+   ============================================================ #}
+<section class="chapter" id="ch-vibe" data-chapter-key="vibe">
+  <header class="chapter-head">
+    <div class="chapter-num">VI</div>
+    <div class="chapter-title-wrap">
+      <h2 class="chapter-title">团队氛围与文化 {{ conf_badge('reviews') }}</h2>
+      <p class="chapter-dek">评价里的情绪倾向 — 一线员工的真实体感</p>
+    </div>
+  </header>
+
+  {{ story_block('reviews') }}
+
+  {% set rf = data.review_facts %}
+  {% if rf and rf.vibe_signals and rf.vibe_signals|length > 0 %}
+  {% set vibe_pos = vibe_counts|selectattr('tone', 'eq', 'good')|list|length %}
+  {% set vibe_neg = vibe_counts|selectattr('tone', 'eq', 'bad')|list|length %}
+  {% set vibe_neu = vibe_counts|selectattr('tone', 'eq', 'neutral')|list|length %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">一句话</span>
+    {{ vibe_pos }} 条正面, {{ vibe_neg }} 条负面 · 整体氛围
+    {% if vibe_pos > vibe_neg %}偏正面
+    {% elif vibe_neg > vibe_pos %}偏负面
+    {% else %}中性
+    {% endif %}
+  </div>
+
+  {% if vibe_donut_svg %}
+  <div class="inline-viz inline-viz-half">
+    <div class="inline-viz-label">情感分布</div>
+    <div class="inline-viz-svg">{{ vibe_donut_svg | safe }}</div>
+  </div>
+  {% endif %}
+
+  <ul class="signal-list">
+    {% for s in rf.vibe_signals %}
+      {{ signal_card(s, 'vibe') }}
+    {% endfor %}
+  </ul>
+
+  {% if rf.slang_glossary and rf.slang_glossary|length > 0 %}
+  <h3 class="subsection">网络词解读</h3>
+  <ul class="slang-list">
+    {% for s in rf.slang_glossary %}
+    <li class="slang-item">
+      <span class="slang-term">{{ s.term }}</span>
+      <span class="slang-meaning">{{ s.meaning }}</span>
+      {% if s.count %}<span class="slang-count mono">{{ s.count }}×</span>{% endif %}
+      {% if s.url %}<a class="slang-link" href="{{ s.url }}" target="_blank" rel="noopener">→</a>{% endif %}
     </li>
     {% endfor %}
   </ul>
   {% endif %}
 
-  {% if r and r.slang_glossary %}
-  <div class="slang-glossary" aria-label="网络词解读">
-    <div class="slang-glossary-head">
-      <span class="slang-glossary-num">F</span>
-      <span class="slang-glossary-title">网络词解读</span>
-      <span class="slang-glossary-dek">原帖里出现的口语 / 互联网表达</span>
-    </div>
-    <dl class="slang-list">
-      {% for s in r.slang_glossary %}
-      <div class="slang-row">
-        <dt class="slang-term">
-          <span class="slang-word">{{ s.term }}</span>
-          {% if s.count and s.count > 1 %}<span class="slang-count">×{{ s.count }}</span>{% endif %}
-        </dt>
-        <dd class="slang-meaning">
-          {{ s.meaning or '—' }}
-          {% if s.url %}<a class="slang-src" href="{{ s.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-        </dd>
-      </div>
-      {% endfor %}
-    </dl>
-  </div>
-  {% endif %}
-</section>
-
-{# ====================== CHAPTER VI — 团队氛围 ====================== #}
-<section class="chapter" id="ch-vibe" draggable="true" data-chapter-key="reviews">
-  <header class="chapter-head">
-    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>VI<span class="slash">/</span><span class="total">VI</span></div>
-    <div class="chapter-title-wrap">
-      <h2 class="chapter-title">团队氛围与文化 {{ conf_badge('reviews') }}</h2>
-      <p class="chapter-dek">评价里的情绪倾向——一线员工的真实体感</p>
-    </div>
-  </header>
-  {{ story_block('reviews') }}
-
-  {% set r = data.review_facts %}
-  {% if not r or not r.vibe_signals %}
-    <p class="empty">暂无直接氛围信号。</p>
   {% else %}
-  <div class="chapter-grid">
-    <div>
-      <ul class="bullets">
-        {% for v in r.vibe_signals %}
-        <li>
-          <span class="chip chip-{{ {'positive':'good','negative':'bad','mixed':'warn'}.get(v.sentiment, 'neutral') }}">{{ {'positive':'正面','negative':'负面','mixed':'混合','neutral':'中性'}[v.sentiment] }}</span>
-          {{ signal_age_badge(v) }}
-          {% set sup = signal_supports.get(v.url|string, {}) %}
-          {% set tier = sup.get('support_tier', 'unverified') %}
-          {% set tlabel = tier_label[tier][0] %}
-          {% set tclass = tier_label[tier][1] %}
-          <span class="tier-badge {{ tclass }}" title="{{ sup.get('support_count', 0) }} 个来源 / {{ sup.get('domains', [])|join(' · ') }}">{{ tlabel }}{% if sup.get('support_count', 0) > 1 %} ×{{ sup.support_count }}{% endif %}</span>
-          {% if v.url %} · <a href="{{ v.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
-          {% if v.evidence %}
-            <blockquote class="evidence">"{{ v.evidence }}"</blockquote>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-
-    <aside>
-      <div class="sidebar">
-        <div class="sidebar-label">氛围信号分布</div>
-        {{ vibe_donut_svg | safe }}
-        <div class="donut-legend">
-          {% for c in vibe_counts %}
-          <div class="donut-legend-row">
-            <span class="donut-legend-swatch" style="background: {% if c.tone == 'good' %}var(--risk-good){% elif c.tone == 'bad' %}var(--risk-bad){% elif c.tone == 'warn' %}var(--risk-mid){% else %}var(--caramel){% endif %};"></span>
-            <span class="donut-legend-label">{{ c.label }}</span>
-            <span class="donut-legend-val">{{ c.count }}</span>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-    </aside>
-  </div>
-  {% endif %}
-
-  {% set r2 = data.review_facts %}
-  {% if r2 and r2.jd_gap_signals %}
-  <h3 class="serif" style="font-size:20px;margin:32px 0 10px;">招聘 JD 与真实工作的差距</h3>
-  <div>
-    {% for j in r2.jd_gap_signals %}
-    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:start;padding:14px 0;border-bottom:1px dashed var(--rule-soft);">
-      <div>
-        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">JD 承诺</div>
-        <div style="font-size:14px;">{{ j.jd_promise }}</div>
-      </div>
-      <div style="font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--accent);font-style:italic;padding-top:6px;">vs</div>
-      <div>
-        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;">实际情况</div>
-        <div style="font-size:14px;">{{ j.reality }}</div>
-      </div>
-      {% if j.url %}
-      <div style="grid-column:1 / -1;font-size:12px;">
-        <a href="{{ j.url }}" target="_blank" rel="noopener">来源</a>
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">未能取得</span>
+    氛围数据本次未能取得。
   </div>
   {% endif %}
 </section>
 
-{# ====================== CHAPTER VII — 近期舆情 ====================== #}
-<section class="chapter" id="ch-news" draggable="true" data-chapter-key="news">
+{# ============================================================
+   VII. 近期舆情
+   ============================================================ #}
+<section class="chapter" id="ch-news" data-chapter-key="news">
   <header class="chapter-head">
-    <div class="chapter-num"><span class="drag-handle" aria-label="拖动以重排章节" title="拖动以重排章节">⋮⋮</span>Ⅶ<span class="slash">/</span><span class="total">Ⅷ</span></div>
+    <div class="chapter-num">VII</div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">近期舆情 {{ conf_badge('news') }}</h2>
-      <p class="chapter-dek">最近的新闻与公开信号——公司在公众眼中什么样</p>
+      <p class="chapter-dek">最近新闻与公开信号 — 公司在公众眼中什么样</p>
     </div>
   </header>
+
   {{ story_block('news') }}
 
-  {% set n = data.news_facts %}
-  {% if not n or not n.items %}
-    <p class="empty">暂无近期舆情。</p>
-  {% else %}
-  <div class="chapter-takeaway" style="margin-bottom:24px;">
-    <div class="chapter-takeaway-tag">整体情感</div>
-    <div>
-      <strong>{{ {'positive':'偏正面','negative':'偏负面','mixed':'混合','neutral':'中性'}[n.sentiment] }}</strong>
-      · 共 {{ n.items|length }} 条新闻
-      {% if n.source_urls %} · 覆盖 {{ n.source_urls|length }} 个来源{% endif %}
-    </div>
+  {% set nf = data.news_facts %}
+  {% if nf and nf.items and nf.items|length > 0 %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">一句话</span>
+    本章汇总 {{ nf.items|length }} 条近期新闻信号 · 整体情感
+    {% if nf.sentiment == 'positive' %}偏正面
+    {% elif nf.sentiment == 'negative' %}偏负面
+    {% else %}中性
+    {% endif %}
   </div>
 
   {% if news_timeline_svg %}
-  <div class="news-timeline-wrap" style="margin-bottom:24px;">
-    {{ news_timeline_svg | safe }}
+  <div class="inline-viz">
+    <div class="inline-viz-label">舆情时间线</div>
+    <div class="inline-viz-svg">{{ news_timeline_svg | safe }}</div>
   </div>
   {% endif %}
 
-  <div class="timeline">
-    {% for it in news_timeline_items[:10] %}
-    <div class="timeline-item" data-tone="{% if n.sentiment == 'positive' %}good{% elif n.sentiment == 'negative' %}bad{% elif n.sentiment == 'mixed' %}warn{% else %}neutral{% endif %}">
-      <div class="timeline-when">{{ it.when }}</div>
-      <div class="timeline-title">
-        {{ it.title }}
-        {% if it.url %}<a class="timeline-link" href="{{ it.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+  <ul class="news-list">
+    {% for it in nf.items[:12] %}
+    <li class="news-item news-sentiment-{{ it.sentiment or 'neutral' }}">
+      <div class="news-item-meta">
+        {% if it.published_at %}<span class="news-item-date mono">{{ it.published_at.strftime('%Y-%m-%d') if it.published_at.strftime is defined else it.published_at }}</span>{% endif %}
+        {% if it.sentiment %}<span class="news-item-sentiment">{{ {'positive':'正面','negative':'负面','neutral':'中性'}.get(it.sentiment, it.sentiment) }}</span>{% endif %}
       </div>
-      {% if it.summary %}
-      <div class="timeline-summary">{{ it.summary }}</div>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-</section>
-
-</div>{# /.chapters-container — main 7 chapters are draggable; optional tail chapters below remain in fixed order #}
-
-{# ====================== CHAPTER VIII — 面试流程 ====================== #}
-{% set rfp = data.review_facts %}
-{% if rfp and (rfp.interview_rounds or rfp.interview_style or rfp.interview_difficulty or rfp.interview_signals) %}
-<section class="chapter" id="ch-interview-process">
-  <header class="chapter-head">
-    <div class="chapter-num">Ⅷ<span class="slash">/</span><span class="total">Ⅷ</span></div>
-    <div class="chapter-title-wrap">
-      <h2 class="chapter-title">面试流程</h2>
-      <p class="chapter-dek">这家公司是怎么面试的——轮数 / 题型 / 难度，让你能针对性准备</p>
-    </div>
-  </header>
-
-  <div class="stat-strip">
-    {% if rfp.interview_rounds %}
-    <div class="stat">
-      <div class="stat-key">典型轮数</div>
-      <div class="stat-val">{{ rfp.interview_rounds }}<span class="unit">轮</span></div>
-    </div>
-    {% endif %}
-    {% if rfp.interview_difficulty %}
-    <div class="stat">
-      <div class="stat-key">难度</div>
-      <div class="stat-val {{ 'bad' if rfp.interview_difficulty == 'hard' else ('mid' if rfp.interview_difficulty == 'medium' else 'good') }}">
-        {{ {'easy':'容易','medium':'中等','hard':'偏难','未知':'未知'}[rfp.interview_difficulty] }}
-      </div>
-    </div>
-    {% endif %}
-  </div>
-
-  {% if rfp.interview_style %}
-  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">题型标签</h3>
-  <div>{% for s in rfp.interview_style %}<span class="chip" style="margin-right:6px;">{{ s }}</span>{% endfor %}</div>
-  {% endif %}
-
-  {% if rfp.interview_signals %}
-  <h3 class="serif" style="font-size:20px;margin:24px 0 10px;">原始观察</h3>
-  <ul class="bullets">
-    {% for sig in rfp.interview_signals[:8] %}
-    <li>
-        <span class="chip chip-neutral" style="font-size:11px;">{{ {'rounds':'轮数','style':'题型','difficulty':'难度','process':'流程','feedback':'反馈'}[sig.aspect] }}</span>
-        <strong>{{ sig.observation or '—' }}</strong>
-        {% if sig.evidence %}<blockquote class="evidence">"{{ sig.evidence }}"</blockquote>{% endif %}
-        {% if sig.url %} · <a href="{{ sig.url }}" target="_blank" rel="noopener">来源</a>{% endif %}
+      <a class="news-item-title" href="{{ it.url }}" target="_blank" rel="noopener">{{ it.title }}</a>
+      {% if it.summary %}<p class="news-item-summary">{{ it.summary }}</p>{% endif %}
     </li>
     {% endfor %}
   </ul>
+
+  {% else %}
+  <div class="chapter-takeaway">
+    <span class="chapter-takeaway-tag">未能取得</span>
+    舆情数据本次未能取得。
+  </div>
   {% endif %}
 </section>
-{% endif %}
 
-{# ====================== CHAPTER IX — 面试反问 ====================== #}
-{% if data.interview_questions %}
-<section class="chapter" id="ch-interview">
+{# ============================================================
+   Side chapter — 面试准备 (流程 + 反问 + 试用期)
+   ============================================================ #}
+<section class="chapter chapter-side" id="ch-interview-prep">
   <header class="chapter-head">
-    <div class="chapter-num">Ⅸ<span class="slash">/</span><span class="total">Ⅸ</span></div>
+    <div class="chapter-num chapter-num-side">面试</div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">面试反问清单</h2>
-      <p class="chapter-dek">基于本次尽调的真实问题——把球踢回去,问出底色</p>
-    </div>
-  </header>
-  <div class="interview-list">
-    {% for q in data.interview_questions %}
-    <div class="interview-q">
-      <div class="interview-q-num">Q{% if loop.index < 10 %}0{% endif %}{{ loop.index }}</div>
-      <div class="interview-q-text">{{ q }}</div>
-    </div>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
-{# ====================== CHAPTER X — 试用期观察清单 ====================== #}
-{% if trial_checklist and (trial_checklist.get('1mo') or trial_checklist.get('3mo') or trial_checklist.get('6mo')) %}
-<section class="chapter" id="ch-trial">
-  <header class="chapter-head">
-    <div class="chapter-num">Ⅹ<span class="slash">/</span><span class="total">Ⅹ</span></div>
-    <div class="chapter-title-wrap">
-      <h2 class="chapter-title">试用期观察清单</h2>
-      <p class="chapter-dek">1 / 3 / 6 个月三个 checkpoint——重点观察什么、什么时候该警觉</p>
+      <h2 class="chapter-title">面试准备</h2>
+      <p class="chapter-dek">面试流程 + 反问清单 + 试用期观察 — 进这家公司的全流程行动指南</p>
     </div>
   </header>
 
-  <div class="trial-grid">
-    {% for key, label in [('1mo','入职 1 个月 · 信号校准'), ('3mo','入职 3 个月 · 转正博弈'), ('6mo','入职 6 个月 · 长期判断')] %}
-      {% set items = trial_checklist.get(key, []) %}
-      {% if items %}
-      <div class="trial-col">
-        <div class="trial-col-head">
-          <span class="trial-col-num">{{ loop.index }}</span>
-          <span class="trial-col-label">{{ label }}</span>
-        </div>
-        <ul class="bullets">
-          {% for it in items %}<li>{{ it }}</li>{% endfor %}
-        </ul>
+  {# --- 面试流程 --- #}
+  {% set rf = data.review_facts %}
+  {% if rf and (rf.interview_rounds or rf.interview_style or rf.interview_difficulty or rf.interview_signals) %}
+  <div class="side-section">
+    <h3 class="subsection">面试流程</h3>
+    <div class="data-table">
+      {% if rf.interview_rounds %}
+      <div class="data-row">
+        <div class="data-cell data-cell-key">典型轮数</div>
+        <div class="data-cell">{{ rf.interview_rounds }}</div>
       </div>
       {% endif %}
-    {% endfor %}
+      {% if rf.interview_style %}
+      <div class="data-row">
+        <div class="data-cell data-cell-key">面试形式</div>
+        <div class="data-cell">{{ rf.interview_style }}</div>
+      </div>
+      {% endif %}
+      {% if rf.interview_difficulty %}
+      <div class="data-row">
+        <div class="data-cell data-cell-key">难度</div>
+        <div class="data-cell">
+          <span class="chip chip-{{ {'easy':'good','medium':'mid','hard':'bad'}.get(rf.interview_difficulty, 'unknown') }}">
+            {{ {'easy':'简单','medium':'中等','hard':'较难'}.get(rf.interview_difficulty, rf.interview_difficulty) }}
+          </span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if rf.interview_signals %}
+    <ul class="signal-list signal-list-compact">
+      {% for s in rf.interview_signals[:5] %}
+        {{ signal_card(s, 'interview') }}
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# --- 面试反问清单 --- #}
+  <div class="side-section">
+    <h3 class="subsection">面试反问清单</h3>
+    <ol class="question-list">
+      {% set qlist = data.interview_questions or [] %}
+      {% for q in qlist[:10] %}
+      <li class="question-item">
+        <span class="question-num mono">{{ '%02d'|format(loop.index) }}</span>
+        <span class="question-text">{{ q }}</span>
+      </li>
+      {% endfor %}
+    </ol>
   </div>
 
-  <div class="chapter-takeaway" style="margin-top:24px;border-left:3px solid var(--risk-bad);">
-    <div class="chapter-takeaway-tag">硬性底线</div>
-    <div>以上任何一项信号恶化（高强度加班固化 / 同事扎堆离职 / 工资延迟）—— 立刻开始看外部机会，不要等。</div>
-  </div>
+  {# --- 试用期观察清单 --- #}
+  {% if trial_checklist %}
+    <div class="side-section">
+      <h3 class="subsection">试用期观察清单</h3>
+      <div class="trial-grid">
+        {% set bucket_labels = {'1mo': '1 个月', '3mo': '3 个月', '6mo': '6 个月'} %}
+        {% for bucket_key, bucket_items in trial_checklist.items() %}
+        <div class="trial-bucket">
+          <div class="trial-bucket-head">
+            <span class="trial-bucket-when">{{ bucket_labels.get(bucket_key, bucket_key) }}</span>
+            <span class="trial-bucket-tag">观察</span>
+          </div>
+          <ul class="trial-bucket-list">
+            {% for item in bucket_items %}
+            <li class="trial-bucket-item">{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 </section>
-{% endif %}
 
-{# ====================== 同行业对比 ====================== #}
-{% if peer_comparison and peer_comparison|length > 0 %}
-<section class="chapter" id="ch-peers">
+{# ============================================================
+   Side chapter — 同行业对比 (conditional)
+   ============================================================ #}
+{% if peer_comparison %}
+<section class="chapter chapter-side" id="ch-peers">
   <header class="chapter-head">
-    <div class="chapter-num">⊕<span class="slash">·</span><span class="total">vs</span></div>
+    <div class="chapter-num chapter-num-side">vs</div>
     <div class="chapter-title-wrap">
       <h2 class="chapter-title">同行业对比</h2>
       <p class="chapter-dek">{{ data.query.company }} 在同行业坐标轴里的相对位置</p>
     </div>
   </header>
 
-  <table class="peer-table">
-    <thead>
-      <tr>
-        <th>公司</th>
-        <th>综合分</th>
-        <th>加班强度</th>
-        <th>司法风险</th>
-        <th>薪酬诚信</th>
-        <th>工商风险</th>
-        <th>文化氛围</th>
-        <th>典型月薪</th>
-      </tr>
-    </thead>
-    <tbody>
-      {# Target row first, highlighted #}
-      <tr class="peer-target">
-        <td><strong>{{ data.query.company }}</strong>（目标）</td>
-        <td>{{ peer_comparison[0].overall_score if peer_comparison[0].overall_score is not none else '—' }}{% if peer_comparison[0].overall_score %}/5{% endif %}</td>
-        <td>{{ peer_comparison[0].axis_overtime or '—' }}{% if peer_comparison[0].axis_overtime %}/5{% endif %}</td>
-        <td>{{ peer_comparison[0].axis_judicial or '—' }}{% if peer_comparison[0].axis_judicial %}/5{% endif %}</td>
-        <td>{{ peer_comparison[0].axis_salary or '—' }}{% if peer_comparison[0].axis_salary %}/5{% endif %}</td>
-        <td>{{ peer_comparison[0].axis_business or '—' }}{% if peer_comparison[0].axis_business %}/5{% endif %}</td>
-        <td>{{ peer_comparison[0].axis_vibe or '—' }}{% if peer_comparison[0].axis_vibe %}/5{% endif %}</td>
-        <td>{{ peer_comparison[0].salary_median_k or '—' }}{% if peer_comparison[0].salary_median_k is not none %}k{% endif %}</td>
-      </tr>
-      {% for peer in peer_comparison[1:] %}
-      <tr>
-        <td>{{ peer.name }}</td>
-        <td>{{ peer.overall_score if peer.overall_score is not none else '—' }}{% if peer.overall_score %}/5{% endif %}</td>
-        <td>{{ peer.axis_overtime or '—' }}{% if peer.axis_overtime %}/5{% endif %}</td>
-        <td>{{ peer.axis_judicial or '—' }}{% if peer.axis_judicial %}/5{% endif %}</td>
-        <td>{{ peer.axis_salary or '—' }}{% if peer.axis_salary %}/5{% endif %}</td>
-        <td>{{ peer.axis_business or '—' }}{% if peer.axis_business %}/5{% endif %}</td>
-        <td>{{ peer.axis_vibe or '—' }}{% if peer.axis_vibe %}/5{% endif %}</td>
-        <td>{{ peer.salary_median_k or '—' }}{% if peer.salary_median_k is not none %}k{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endif %}
-
-{# ====================== 综合推断 ====================== #}
-{% if data.findings and data.findings.inferences %}
-<section class="chapter" id="ch-infer">
-  <header class="chapter-head">
-    <div class="chapter-num">*<span class="slash">·</span><span class="total">side</span></div>
-    <div class="chapter-title-wrap">
-      <h2 class="chapter-title">综合推断</h2>
-      <p class="chapter-dek">LLM 基于本次事实推出的合理推断——每条带佐证,供面试决策参考</p>
+  <div class="peer-table">
+    <div class="peer-row peer-row-head">
+      <div class="peer-cell peer-cell-key">公司</div>
+      <div class="peer-cell peer-cell-num">综合分</div>
+      <div class="peer-cell peer-cell-num">薪酬 P50</div>
+      <div class="peer-cell peer-cell-num">司法</div>
+      <div class="peer-cell peer-cell-num">舆情</div>
     </div>
-  </header>
-  <div class="inference-list">
-    {% for inf in data.findings.inferences %}
-    <div class="inference-card">
-      <div class="inference-card-mark">”</div>
-      <div>
-        <div class="inference-card-body">{{ inf.claim }}</div>
-        {% if inf.grounding_evidence %}
-        <div class="inference-card-meta">
-          佐证 ·
-          {% for url in inf.grounding_evidence[:3] %}
-            <a href="{{ url }}" target="_blank" rel="noopener">{{ url.host }}</a>{% if not loop.last %} · {% endif %}
-          {% endfor %}
-        </div>
-        {% endif %}
+    {% for p in peer_comparison %}
+    <div class="peer-row {% if loop.first %}peer-row-target{% endif %}">
+      <div class="peer-cell peer-cell-key">
+        {% if loop.first %}<span class="peer-tag">标的</span>{% endif %}
+        {{ p.name }}
       </div>
+      <div class="peer-cell peer-cell-num mono">{{ '%.1f'|format(p.overall_score or 0) }}</div>
+      <div class="peer-cell peer-cell-num mono">{% if p.salary_median_k %}¥{{ p.salary_median_k }}K{% else %}—{% endif %}</div>
+      <div class="peer-cell peer-cell-num mono">{{ p.case_count_total or 0 }}</div>
+      <div class="peer-cell peer-cell-num">{{ p.news_sentiment or '中性' }}</div>
     </div>
     {% endfor %}
   </div>
 </section>
 {% endif %}
 
-{# ====================== 数据缺口 ====================== #}
-{% if data.data_gaps %}
-<section class="chapter" id="ch-gaps">
+{# ============================================================
+   Side chapter — JD 对照 (conditional)
+   ============================================================ #}
+{% if jd_alignment and jd_alignment|length > 0 %}
+<section class="chapter chapter-side" id="ch-jd">
   <header class="chapter-head">
-    <div class="chapter-num">!</div>
+    <div class="chapter-num chapter-num-side">JD</div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">数据缺口</h2>
-      <p class="chapter-dek">诚实列出本次没拿到的维度——务必人工补齐</p>
+      <h2 class="chapter-title">JD 对照清单</h2>
+      <p class="chapter-dek">JD 里 15 类常见承诺 vs 公开事实 — confirmed / contradicted / unverified</p>
     </div>
   </header>
-  {% for g in data.data_gaps %}
-  <div class="data-gap"><strong>缺口</strong> · {{ g }}</div>
-  {% endfor %}
+
+  <div class="jd-grid">
+    {% for j in jd_alignment %}
+    <div class="jd-cell jd-cell-{{ j.status }}">
+      <div class="jd-cell-head">
+        <span class="jd-cell-name">{{ j.claim }}</span>
+        <span class="jd-cell-status">{{ {'confirmed':'已证实','contradicted':'已反驳','unverified':'未证实'}.get(j.status, j.status) }}</span>
+      </div>
+      {% if j.reasoning %}<div class="jd-cell-evidence">{{ j.reasoning }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
 </section>
 {% endif %}
 
-{# ====================== 来源附录 ====================== #}
-<section class="chapter" id="ch-sources">
+{# ============================================================
+   Side chapter — 数据缺口 + 综合推断
+   ============================================================ #}
+<section class="chapter chapter-side" id="ch-tail">
   <header class="chapter-head">
-    <div class="chapter-num">Σ</div>
+    <div class="chapter-num chapter-num-side">附</div>
     <div class="chapter-title-wrap">
-      <h2 class="chapter-title">来源附录</h2>
-      <p class="chapter-dek">所有引用 {{ sources|length }} 条,逐条可溯</p>
+      <h2 class="chapter-title">数据缺口 + 综合推断</h2>
+      <p class="chapter-dek">诚实列出本次没拿到的维度, 以及基于现有事实的合理推断</p>
     </div>
   </header>
-  {% if not sources %}
-    <p class="empty">暂无来源链接。</p>
-  {% else %}
-  <ul class="sources-list">
-    {% for s in sources %}
-    <li>
-      <img class="favicon" src="{{ favicon_url(s.domain) }}" alt="" loading="lazy"
-           onerror="this.style.visibility='hidden'" />
-      <span class="domain">{{ s.domain }}</span>
-      <span class="url"><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title or s.url }}</a></span>
+
+  <div class="side-section">
+    <h3 class="subsection">数据缺口</h3>
+    {% set gaps = data.data_gaps or [] %}
+    {% if gaps|length > 0 %}
+    <ul class="gap-list">
+      {% for g in gaps %}
+      <li class="gap-item">
+        <span class="gap-name">{{ g }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="prose">本次未发现明显数据缺口。{{ (1 if data.company_profile else 0) + (1 if data.business_facts else 0) + (1 if data.review_facts else 0) + (1 if data.news_facts else 0) + (1 if data.judicial_facts else 0) }} / 5 维度已抓取。</p>
+    {% endif %}
+  </div>
+
+  <div class="side-section">
+    <h3 class="subsection">综合推断</h3>
+    {% if v.reasons and v.reasons|length > 0 %}
+    <ul class="infer-list">
+      {% for inf in v.reasons %}
+      <li class="infer-item">
+        <div class="infer-body">{{ inf }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="prose">本次未生成综合推断。</p>
+    {% endif %}
+  </div>
+</section>
+
+</main>
+
+{# ============================================================
+   4. 风险提示 — Risk Disclosure
+   ============================================================ #}
+<section class="risk-disclosure">
+  <header class="risk-disclosure-head">
+    <span class="risk-disclosure-tag">风险提示</span>
+    <span class="risk-disclosure-en">Risk Factors</span>
+  </header>
+  <ol class="risk-list">
+    <li class="risk-item">
+      <div class="risk-item-head">本报告由 AI 生成, 仅供个人参考</div>
+      <div class="risk-item-body">所有信号从公开渠道 (Tavily 搜索 + 公开工商 / 司法数据 + Claude 结构化抽取) 取得, 不构成任何投资或职业建议。请独立判断并自行核实关键事实。</div>
+    </li>
+    <li class="risk-item">
+      <div class="risk-item-head">数据时效性</div>
+      <div class="risk-item-body">搜索结果可能因时间推移而过期。报告生成时间见顶部 masthead, 关键事实建议复核后再决策。</div>
+    </li>
+    <li class="risk-item">
+      <div class="risk-item-head">gsxt / wenshu 在非 CN IP 下软失败</div>
+      <div class="risk-item-body">
+        如工商 / 司法数据未能取得, 请手动到
+        <a href="https://www.gsxt.gov.cn/" target="_blank" rel="noopener">国家企业信用信息公示系统</a> /
+        <a href="https://wenshu.court.gov.cn/" target="_blank" rel="noopener">裁判文书网</a> /
+        <a href="https://www.tianyancha.com/" target="_blank" rel="noopener">天眼查</a> 核查。
+      </div>
+    </li>
+    <li class="risk-item">
+      <div class="risk-item-head">隐私</div>
+      <div class="risk-item-body">本报告不存储任何个人身份信息, 仅本地生成。可随时删除 reports/ 目录下的 .html 文件。</div>
+    </li>
+  </ol>
+</section>
+
+{# ============================================================
+   5. Σ 来源附录
+   ============================================================ #}
+<section class="appendix">
+  <header class="appendix-head">
+    <span class="appendix-tag">Σ 来源附录</span>
+    <span class="appendix-meta">{{ sources|length }} 条 · 按来源平台分组</span>
+  </header>
+  <ul class="appendix-list">
+    {% for src in sources %}
+    <li class="appendix-item">
+      <span class="appendix-domain">{{ src.domain }}</span>
+      <a class="appendix-url" href="{{ src.url }}" target="_blank" rel="noopener">{{ src.title or src.url }}</a>
     </li>
     {% endfor %}
   </ul>
-  {% endif %}
 </section>
 
 <footer class="footnote">
-  本报告由 jobHunter v0.1.5 自动生成,仅供参考。
-  <span class="small">Generated {{ data.generated_at.strftime('%Y-%m-%d %H:%M UTC') }} · single-file portability</span>
+  <span class="footnote-brand">jobHunter RESEARCH</span>
+  <span class="footnote-meta">生成于 {{ data.generated_at.strftime('%Y-%m-%d %H:%M') }} · 本次跑 Tavily credits ≈ {{ sources|length }}</span>
 </footer>
 
 </div>
 
-{# === v0.1.12 — Motion polish (去 AI 味) ===
-   Inline JS for scroll-reveal + KPI counter animation. All gated by
-   prefers-reduced-motion. No external deps — preserves single-file portability. #}
 <script>
-(function () {
+{# ============================================================
+   Inline JS — minimal motion + drag-and-drop + KPI counter ticker
+   No external deps. prefers-reduced-motion respected.
+   ============================================================ #}
+(function() {
   'use strict';
-  var prefersReduced = window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (prefersReduced) return;
 
-  // ---------- Reveal-on-scroll ----------
-  // Auto-mark top-level sections; stagger axis-ribbon cells + hero side cards.
-  var revealTargets = document.querySelectorAll(
-    '.chapter, .hero, .axis-ribbon, .hero-ring, .hero-radar, .masthead'
-  );
-  var idx = 0;
-  revealTargets.forEach(function (el) {
-    el.classList.add('reveal');
-    if (idx < 4) {
-      el.style.setProperty('--reveal-delay', (idx * 80) + 'ms');
-    }
-    idx++;
-  });
-
-  // ---------- Counter animation on KPI numbers ----------
-  // Axis ribbon numbers (.axis-ribbon-num) — pure integers.
-  // Stat strip values (.stat-val[data-counter]) — may include decimals.
-  var axisNums = document.querySelectorAll('.axis-ribbon-num');
-  axisNums.forEach(function (el) {
-    var raw = el.textContent.trim();
-    var num = parseFloat(raw);
-    if (!isNaN(num)) {
-      el.setAttribute('data-counter', String(num));
-      el.setAttribute('data-counter-decimals', '0');
-      if (!prefersReduced) el.textContent = '0';
-    }
-  });
-  // Stat values with explicit data-counter (set by builder if any)
-  var statVals = document.querySelectorAll('.stat-val[data-counter]');
-  statVals.forEach(function (el) {
-    if (!prefersReduced) {
-      var d = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
-      el.textContent = (0).toFixed(d);
-    }
-  });
-
-  function tickCounter(el) {
-    var target = parseFloat(el.getAttribute('data-counter'));
-    if (isNaN(target)) return;
-    var decimals = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
-    var duration = 700;
-    var start = null;
-    function step(ts) {
-      if (start === null) start = ts;
-      var t = Math.min(1, (ts - start) / duration);
-      // easeOutCubic
-      var eased = 1 - Math.pow(1 - t, 3);
-      el.textContent = (target * eased).toFixed(decimals);
-      if (t < 1) {
-        requestAnimationFrame(step);
-      } else {
-        el.textContent = target.toFixed(decimals);
-        el.classList.add('is-countered');
+  // ----- Chapter drag-and-drop -----
+  var container = document.querySelector('.chapters-container');
+  if (container) {
+    var dragSrc = null;
+    container.querySelectorAll('.chapter[draggable]').forEach(function(ch) {
+      ch.setAttribute('draggable', 'true');
+      ch.addEventListener('dragstart', function(e) {
+        dragSrc = ch;
+        ch.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', ch.id);
+      });
+      ch.addEventListener('dragend', function() {
+        ch.classList.remove('dragging');
+        container.querySelectorAll('.chapter').forEach(function(c) { c.classList.remove('drag-over'); });
+      });
+      ch.addEventListener('dragover', function(e) { e.preventDefault(); ch.classList.add('drag-over'); });
+      ch.addEventListener('dragleave', function() { ch.classList.remove('drag-over'); });
+      ch.addEventListener('drop', function(e) {
+        e.preventDefault();
+        ch.classList.remove('drag-over');
+        if (dragSrc && dragSrc !== ch) {
+          var rect = ch.getBoundingClientRect();
+          var after = (e.clientY - rect.top) > rect.height / 2;
+          container.insertBefore(dragSrc, after ? ch.nextSibling : ch);
+          try {
+            var order = Array.prototype.slice.call(container.querySelectorAll('.chapter')).map(function(c){return c.id;});
+            localStorage.setItem('jobhunter:chapter-order', JSON.stringify(order));
+          } catch (e2) {}
+        }
+      });
+    });
+    try {
+      var saved = JSON.parse(localStorage.getItem('jobhunter:chapter-order') || 'null');
+      if (saved && Array.isArray(saved)) {
+        saved.forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el && el.parentNode === container) container.appendChild(el);
+        });
       }
+    } catch (e3) {}
+  }
+
+  // ----- Scroll reveal -----
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function(entries) {
+      entries.forEach(function(en) {
+        if (en.isIntersecting) {
+          en.target.classList.add('reveal');
+          io.unobserve(en.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+    document.querySelectorAll('.chapter, .kpi-cell, .inline-viz, .risk-item, .appendix-item').forEach(function(el) {
+      io.observe(el);
+    });
+  } else {
+    document.querySelectorAll('.chapter, .kpi-cell, .inline-viz, .risk-item, .appendix-item').forEach(function(el) {
+      el.classList.add('reveal');
+    });
+  }
+
+  // ----- KPI counter ticker (easeOutCubic) -----
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+  function animateNumber(el, target, decimals) {
+    var start = performance.now();
+    var dur = 1100;
+    function step(now) {
+      var t = Math.min((now - start) / dur, 1);
+      var eased = easeOutCubic(t);
+      var val = target * eased;
+      el.textContent = decimals ? val.toFixed(decimals) : Math.round(val);
+      if (t < 1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
   }
-
-  if (!('IntersectionObserver' in window)) {
-    // Fallback: just reveal everything + tick to final value
-    revealTargets.forEach(function (el) { el.classList.add('is-visible'); });
-    axisNums.forEach(function (el) {
-      el.textContent = el.getAttribute('data-counter');
+  if ('IntersectionObserver' in window) {
+    var ioNum = new IntersectionObserver(function(entries) {
+      entries.forEach(function(en) {
+        if (!en.isIntersecting) return;
+        var el = en.target;
+        var txt = el.textContent.trim();
+        var match = txt.match(/^([\-\d.]+)/);
+        if (match) {
+          var raw = match[1];
+          var target = parseFloat(raw);
+          var decimals = (raw.split('.')[1] || '').length;
+          animateNumber(el, target, decimals);
+        }
+        ioNum.unobserve(el);
+      });
+    }, { threshold: 0.5 });
+    document.querySelectorAll('.kpi-val, .cover-band-p25, .cover-band-p75, .salary-band-end').forEach(function(el) {
+      ioNum.observe(el);
     });
-    statVals.forEach(function (el) {
-      var d = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
-      el.textContent = parseFloat(el.getAttribute('data-counter')).toFixed(d);
-    });
-    return;
   }
 
-  var revealObs = new IntersectionObserver(function (entries) {
-    entries.forEach(function (entry) {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        revealObs.unobserve(entry.target);
-      }
-    });
-  }, { rootMargin: '0px 0px -6% 0px', threshold: 0.05 });
-  revealTargets.forEach(function (el) { revealObs.observe(el); });
-
-  // Counter observer — only fires when the number scrolls into view
-  var counterTargets = [].slice.call(axisNums).concat([].slice.call(statVals));
-  if (counterTargets.length) {
-    if (prefersReduced) {
-      counterTargets.forEach(function (el) {
-        var d = parseInt(el.getAttribute('data-counter-decimals') || '0', 10);
-        el.textContent = parseFloat(el.getAttribute('data-counter')).toFixed(d);
-      });
-    } else {
-      var counterObs = new IntersectionObserver(function (entries) {
-        entries.forEach(function (entry) {
-          if (entry.isIntersecting) {
-            tickCounter(entry.target);
-            counterObs.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.4 });
-      counterTargets.forEach(function (el) { counterObs.observe(el); });
-    }
-  }
-
-  // ---------- v0.1.13 — Chapter drag-reorder ----------
-  // Native HTML5 drag-and-drop on .chapter elements inside #chapters-container.
-  // Order is persisted to localStorage so the user can craft a personalized export.
-  // Gated by prefers-reduced-motion for the visual indicator; drag itself is fine.
-  var chaptersContainer = document.getElementById('chapters-container');
-  var reorderReset = document.getElementById('reorder-reset');
-  if (chaptersContainer) {
-    var chapters = chaptersContainer.querySelectorAll('.chapter');
-    var dragSrcKey = null;
-    var STORAGE_KEY = 'jobhunter-chapter-order-v1';
-
-    function getStoredOrder() {
-      try {
-        var raw = window.localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-      } catch (e) { return null; }
-    }
-    function setStoredOrder(order) {
-      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(order)); } catch (e) {}
-    }
-    function clearStoredOrder() {
-      try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
-    }
-    function currentOrder() {
-      return Array.prototype.map.call(chapters, function (c) {
-        return c.getAttribute('data-chapter-key') || c.id;
-      });
-    }
-    function applyOrder(order) {
-      if (!order || !order.length) return false;
-      var byKey = {};
-      Array.prototype.forEach.call(chapters, function (c) {
-        var k = c.getAttribute('data-chapter-key') || c.id;
-        byKey[k] = c;
-      });
-      var placed = 0;
-      order.forEach(function (k) {
-        var node = byKey[k];
-        if (node) {
-          chaptersContainer.appendChild(node);
-          placed++;
-        }
-      });
-      return placed > 0;
-    }
-    function showReset(show) {
-      if (!reorderReset) return;
-      if (show) reorderReset.removeAttribute('hidden');
-      else reorderReset.setAttribute('hidden', '');
-    }
-
-    // Restore previous order on load
-    var stored = getStoredOrder();
-    var defaultOrder = currentOrder();
-    if (stored && JSON.stringify(stored) !== JSON.stringify(defaultOrder)) {
-      applyOrder(stored);
-      showReset(true);
-    }
-
-    chapters.forEach(function (chapter) {
-      chapter.addEventListener('dragstart', function (e) {
-        dragSrcKey = chapter.getAttribute('data-chapter-key') || chapter.id;
-        chapter.classList.add('dragging');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          try { e.dataTransfer.setData('text/plain', dragSrcKey); } catch (err) {}
-        }
-      });
-      chapter.addEventListener('dragend', function () {
-        chapter.classList.remove('dragging');
-        chapters.forEach(function (c) { c.classList.remove('drag-over'); });
-      });
-      chapter.addEventListener('dragover', function (e) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        chapter.classList.add('drag-over');
-      });
-      chapter.addEventListener('dragleave', function () {
-        chapter.classList.remove('drag-over');
-      });
-      chapter.addEventListener('drop', function (e) {
-        e.preventDefault();
-        chapter.classList.remove('drag-over');
-        if (!dragSrcKey) return;
-        var srcEl = chaptersContainer.querySelector('[data-chapter-key="' + dragSrcKey + '"]');
-        if (!srcEl || srcEl === chapter) return;
-        // Insert src before target
-        chaptersContainer.insertBefore(srcEl, chapter);
-        var newOrder = currentOrder();
-        setStoredOrder(newOrder);
-        showReset(true);
-      });
-    });
-
-    if (reorderReset) {
-      reorderReset.addEventListener('click', function () {
-        clearStoredOrder();
-        applyOrder(defaultOrder);
-        showReset(false);
-      });
-    }
+  // ----- Print trigger (?print=1) -----
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('print') === '1') {
+    setTimeout(function() { window.print(); }, 600);
   }
 })();
 </script>
 
-{# === v0.1.17 — Print / PDF auto-trigger ===
-   When the URL contains ?print=1, wait for layout to settle then call
-   window.print(). User sees the browser print dialog (Chrome / Edge / Firefox
-   all support "Save as PDF" as a destination). Zero deps. #}
-<script>
-(function () {
-  try {
-    var params = new URLSearchParams(window.location.search);
-    if (params.get('print') === '1') {
-      // Give IntersectionObservers a beat to settle, then trigger.
-      window.addEventListener('load', function () {
-        setTimeout(function () {
-          try { window.print(); } catch (e) {}
-        }, 600);
-      });
-    }
-  } catch (e) {}
-})();
-</script>
 </body>
 </html>

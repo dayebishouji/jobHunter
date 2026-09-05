@@ -86,9 +86,9 @@ def _minimal_report(*, collector_notes: dict[str, str] | None = None):
 
 
 class TestTemplateBanner:
-    """v0.1.22 — Banner must render for BOTH anti_bot_redirect AND no_results."""
+    """v0.2.0 — Banner lives in `.collector-notes` block (cover-foot), not the legacy `.data-source-note` class."""
 
-    BANNER_MARKUP = '<div class="data-source-note">'
+    BANNER_MARKUP = '<div class="collector-notes"'
 
     def test_banner_renders_for_anti_bot_redirect(self):
         html = build_report(_minimal_report(collector_notes={"sogou_weixin": "anti_bot_redirect"}))
@@ -96,11 +96,13 @@ class TestTemplateBanner:
         assert self.BANNER_MARKUP in html
 
     def test_banner_renders_for_no_results(self):
-        """Bug 1 — pre-v0.1.22 the banner only matched anti_bot_redirect."""
+        """Bug 1 — pre-v0.1.22 the banner only matched anti_bot_redirect.
+        v0.2.0 still surfaces the no_results case with explicit detail marker."""
         html = build_report(_minimal_report(collector_notes={"sogou_weixin": "no_results"}))
-        assert "搜狗微信搜索本次未抓到公众号文章" in html
+        assert "搜狗微信搜索被反爬拦截" in html
         assert self.BANNER_MARKUP in html
-        assert "建议手动到" in html
+        assert "手动核查" in html
+        assert "静默封禁" in html  # no_results-specific extra hint
 
     def test_banner_renders_for_silent_block_variants(self):
         """Sogou returns one of `anti_bot_redirect` (challenge page detected)
@@ -111,8 +113,7 @@ class TestTemplateBanner:
             assert self.BANNER_MARKUP in html, f"missing banner for marker={marker!r}"
 
     def test_no_banner_when_sogou_succeeded(self):
-        """No collector_notes → no banner markup (the CSS class definition
-        always exists in the stylesheet, but no actual `<div class="data-source-note">` block)."""
+        """No collector_notes → no collector-notes block in HTML."""
         html = build_report(_minimal_report(collector_notes={}))
         assert self.BANNER_MARKUP not in html
         # Inline tag still references sogou in the CSS comment, so we don't

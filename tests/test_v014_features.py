@@ -265,7 +265,8 @@ def _agg(
 
 
 class TestJudicialChapterReframe:
-    """Template renders positive-finding reframe when case_count=0."""
+    """v0.2.0 — Judicial chapter positive-finding reframe for case_count=0,
+    uses broker-blue tinted takeaway + data-table for nonzero."""
 
     def test_zero_judicial_renders_negative_finding(self):
         from jobhunter.models.report import ReportData
@@ -276,7 +277,7 @@ class TestJudicialChapterReframe:
         )
         html = build_report(data)
         assert "公开记录中未发现诉讼或被执行" in html
-        assert "var(--risk-good)" in html
+        assert "chapter-takeaway-good" in html
 
     def test_no_judicial_renders_manual_check(self):
         from jobhunter.models.report import ReportData
@@ -286,9 +287,9 @@ class TestJudicialChapterReframe:
             judicial_facts=None,
         )
         html = build_report(data)
-        assert "未能取得司法数据" in html
+        assert "裁判文书网" in html
 
-    def test_nonzero_judicial_renders_stat_strip(self):
+    def test_nonzero_judicial_renders_data_table(self):
         from jobhunter.models.report import ReportData
         data = ReportData(
             query=_q(),
@@ -296,8 +297,10 @@ class TestJudicialChapterReframe:
             judicial_facts=JudicialFacts(case_count_total=10),
         )
         html = build_report(data)
-        assert "stat-strip" in html
-        assert "累计案件" in html
+        # v0.2.0 — year buckets rendered in a research-report data-table
+        assert "data-table" in html
+        assert "诉讼数" in html
+        assert "chapter-takeaway-bad" in html  # red-bordered takeaway for nonzero
 
 
 class TestCompanyInfoAllowlist:

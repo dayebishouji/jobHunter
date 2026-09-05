@@ -37,14 +37,17 @@ def test_render_basic_html_structure():
     assert "TestCorp" in html
     assert "<style>" in html
     assert ":root" in html  # CSS embedded
-    assert "加班强度" in html  # axis label appears in ribbon + radar
-    assert 'class="chapter"' in html  # chapter layout (no <details>)
-    assert "薪酬与福利" in html  # at least one chapter title
-    assert "来源附录" in html  # sources chapter title (renamed from 数据来源附录)
-    # New: chart pieces
+    assert "加班强度" in html  # axis label appears in KPI grid
+    assert 'class="chapter"' in html  # chapter layout
+    assert "薪酬" in html  # chapter IV title (v0.2.0 split into IV 薪酬 / V 团队健康度 / VI 团队氛围)
+    assert "Σ 来源附录" in html  # sources chapter title
+    # v0.2.0 — broker-research hybrid elements
+    assert "投资要点" in html
+    assert "主编按" in html
+    assert "5 轴雷达" in html
+    assert "风险提示" in html  # risk-disclosure footer
+    # Charts
     assert "radar-svg" in html
-    assert "score-ring-svg" in html
-    assert "dist-row-fill" in html  # overtime distribution row rendered (we have 1 signal)
 
 
 def test_render_with_data_gaps():
@@ -66,16 +69,17 @@ def test_render_company_profile_empty_uses_manual_links():
     """When CompanyProfile is None, template still surfaces manual-check links."""
     data = _minimal_data()
     html = build_report(data)
-    assert "百度百科" in html
-    assert "IT 桔子" in html
+    # v0.2.0 — manual-check link uses generic message in chapter-takeaway
+    assert "公司画像" in html  # chapter heading still rendered
+    assert "本次未能取得" in html  # soft-fail note visible
 
 
-def test_render_axis_ribbon_renders_all_five_axes():
+def test_render_axis_kpi_grid_renders_three_cells():
+    """v0.2.0 — KPI grid (3 cells: 综合分 / 司法 / 加班) replaces the old 5-cell axis ribbon."""
     data = _minimal_data()
     html = build_report(data)
-    assert "axis-ribbon-cell" in html
-    # 5 axis cells should be present
-    assert html.count("axis-ribbon-cell") >= 5
+    assert "kpi-cell" in html
+    assert html.count("kpi-cell") >= 3
 
 
 class TestComputeSignalSupports:
@@ -146,7 +150,7 @@ class TestComputeSignalSupports:
 
 
 def test_render_includes_tier_badges_for_signals():
-    """Tier badge appears next to each signal chip in chapters IV/V/VI."""
+    """v0.2.0 — Tier badge appears next to each signal card in chapters V/VI."""
     from jobhunter.models.facts import OvertimeSignal
     data = _minimal_data()
     # Re-create with multi-domain corroboration
@@ -164,6 +168,6 @@ def test_render_includes_tier_badges_for_signals():
     data.review_facts = reviews
     data.findings.reviews = reviews
     html = build_report(data)
-    assert "tier-badge" in html
-    assert "tier-multi" in html  # 3 distinct domains → multi
+    assert "signal-tier" in html
+    assert "tier-multi-domain" in html  # 3 distinct domains → multi-domain (v0.2.0 class)
     assert "跨域印证" in html

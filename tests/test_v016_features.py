@@ -150,6 +150,7 @@ class TestJDAlignment:
         assert claims == []
 
     def test_jd_alignment_renders_in_report(self):
+        """v0.2.0 — JD alignment renders inside ch-jd side chapter (class jd-grid, not section class)."""
         rf = ReviewFacts(
             overtime_signals=[OvertimeSignal(pattern="996", intensity="high")] * 2
         )
@@ -157,14 +158,14 @@ class TestJDAlignment:
             query=_q("弹性工作"), generated_at=datetime.now(timezone.utc), review_facts=rf
         )
         html = build_report(data)
-        assert '<section class="jd-alignment"' in html
-        assert "jd-claim-contradicted" in html
+        assert 'id="ch-jd"' in html
+        assert "jd-cell-contradicted" in html
 
     def test_no_jd_no_section(self):
         data = ReportData(query=_q(None), generated_at=datetime.now(timezone.utc))
         html = build_report(data)
-        # Section is conditional; assert the actual element (not the CSS comment text)
-        assert '<section class="jd-alignment"' not in html
+        # Side chapter is conditional; assert the actual element (not the CSS comment text)
+        assert 'id="ch-jd"' not in html
 
 
 # =============== F3: top-level verdict ===============
@@ -293,7 +294,8 @@ class TestOverallVerdict:
         # Falls to caution (anomaly alone), not avoid
         assert v.level == "caution"
 
-    def test_verdict_renders_in_hero(self):
+    def test_verdict_renders_in_cover(self):
+        """v0.2.0 — verdict lives in cover section (.cover-verdict) and masthead rating (增持)."""
         data = self._data(
             axes={
                 RiskAxis.OVERTIME: 5,
@@ -305,10 +307,13 @@ class TestOverallVerdict:
             jf=JudicialFacts(case_count_total=0),
         )
         html = build_report(data)
-        assert "hero-verdict" in html
-        assert "建议接 offer" in html
+        assert "cover-verdict" in html
+        assert "增持" in html  # masthead rating 增持 when recommend
+        # avoid reason headline would not appear here, sanity
+        assert "减持" not in html
 
     def test_verdict_avoid_renders_red_label(self):
+        """v0.2.0 — avoid verdict uses cover-verdict-avoid (red border) + 减持 masthead rating."""
         data = self._data(
             axes={
                 RiskAxis.OVERTIME: 1,
@@ -319,5 +324,6 @@ class TestOverallVerdict:
             },
         )
         html = build_report(data)
-        assert "hero-verdict-avoid" in html
-        assert "建议避开" in html
+        assert "cover-verdict-avoid" in html
+        assert "masthead-rating-avoid" in html
+        assert "减持" in html

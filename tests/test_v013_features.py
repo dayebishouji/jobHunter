@@ -245,21 +245,21 @@ class TestBuildReportEditorial:
     def test_render_includes_chapters_container(self):
         data = ReportData(query=_q(), generated_at=datetime.now(timezone.utc))
         html = build_report(data)
-        assert 'id="chapters-container"' in html
         assert 'class="chapters-container"' in html
 
-    def test_render_includes_drag_handle_and_draggable_chapters(self):
+    def test_render_marks_chapters_as_draggable(self):
+        """v0.2.0 — chapters are draggable via JS but no visible drag-handle glyph
+        (broker-research layout uses a tighter chapter head — handle added back
+        if user requests). drag-drop JS still wires all .chapter elements."""
         data = ReportData(query=_q(), generated_at=datetime.now(timezone.utc))
         html = build_report(data)
-        # 7 main chapters are draggable
-        assert html.count('draggable="true"') >= 7
-        # Drag handle glyph appears
-        assert 'class="drag-handle"' in html
-        assert "⋮⋮" in html
-        # data-chapter-key drives the JS reorder logic
+        # Chapters are wrapped with draggable=true by the JS init (not template).
+        # Verify the JS targets .chapter elements.
+        assert "querySelectorAll('.chapter')" in html
+        assert html.count('class="chapter"') >= 5  # main numbered chapters
+        # data-chapter-key still drives JS reorder (kept for stable persistence)
         assert 'data-chapter-key="company"' in html
         assert 'data-chapter-key="judicial"' in html
-        assert 'data-chapter-key="reviews"' in html
 
     def test_render_includes_story_block_when_judicial_present(self):
         data = ReportData(
@@ -283,23 +283,17 @@ class TestBuildReportEditorial:
         assert 'class="edit-note"' not in html
         assert 'class="data-story"' not in html
 
-    def test_render_includes_reset_button_hidden_by_default(self):
+    def test_render_drag_drop_js_present(self):
+        """v0.2.0 — drag-drop JS still wired but no visible reset button (research-report chrome is minimal)."""
         data = ReportData(query=_q(), generated_at=datetime.now(timezone.utc))
         html = build_report(data)
-        assert 'id="reorder-reset"' in html
-        # Default: button is hidden until user drags something
-        assert 'class="reorder-reset" id="reorder-reset" hidden' in html
-
-    def test_render_includes_drag_drop_js(self):
-        data = ReportData(query=_q(), generated_at=datetime.now(timezone.utc))
-        html = build_report(data)
-        # HTML5 DnD + localStorage wiring
+        # HTML5 DnD + localStorage wiring (localStorage key updated to v2 schema)
         assert "dragstart" in html
         assert "dragend" in html
         assert "dragover" in html
         assert "drop" in html
         assert "localStorage" in html
-        assert "jobhunter-chapter-order-v1" in html
+        assert "jobhunter:chapter-order" in html
 
     def test_render_uses_pre_populated_edit_notes(self):
         # Caller-supplied editorial voice wins over the deterministic builder.

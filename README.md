@@ -78,12 +78,12 @@ src/jobhunter/
 ## 测试
 
 ```bash
-pytest                        # 427 tests
+pytest                        # 445 tests
 pytest tests/test_charts.py   # 图表单元测试
 pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 ```
 
-## 已知限制（v0.1.23）
+## 已知限制（v0.2.0）
 
 - **gsxt.gov.cn / wenshu.court.gov.cn** 在非中国大陆 IP 下不可达，会软失败并在报告里提示手动核查链接
 - **Tavily 免费档** 1000 credits / 月；v0.1.8 默认跑两轮（round 1 + entity-aliased round 2），单次约 50–80 credits
@@ -107,6 +107,7 @@ pytest tests/test_pipeline_smoke.py  # 端到端 mock 烟囱测试
 - **v0.1.22 修 3 个 reviews / sogou 静默 bug**：(1) **template 横幅 bug** — v0.1.20 加的搜狗反爬提示横幅只匹配 `error="anti_bot_redirect"` 一种字符串，当搜狗返回 `no_results`（fetch 成功但解析 0 条，往往是搜狗静默软封）时报告里完全看不到提示；现在 banner 同时匹配两种错误码，且文案区分两种情况；(2) **搜狗反爬检测漏报** — 搜狗近期反爬挑战页去掉了中文警告文案，只剩 `anti.min.css` + `antispider.min.js` 资源 bundle，原来 4 个关键词（`antispider`/`verify`/`请输入验证码`/`您的访问过于频繁`）漏判，新加 3 个资源名 fallback (`static/css/anti`/`antispider.min.js`/`anti.min.css`)，让挑战页 100% 被识别为 `anti_bot_redirect`；(3) **reviews 域消费品品牌检索污染** — Tavily 对消费品品牌（如美的）name-only 查询会返回大量产品评测 / 营销页 / 登录页，LLM 抽取正确剔除但 reviews 章空；现在 `normalize.py` 加 `REVIEW_URL_PATTERNS` host→URL 子串白名单（覆盖 1point3acres/bbs、知乎/question、牛客/discuss、看准/firm、脉脉/article 等），非职场内容在送进 LLM 之前就被过滤掉；其他域（news/business/judicial）不受影响（filter 只对 reviews bucket 生效）。测试 +34 (`tests/test_v0122_features.py`)，393 → 427 pass
 - **v0.1.22 hotfix 修 reviews 核心域被静默截断**：`domains_for_position()` 在后端等岗位下 union 出 23 个 domain，但 `MAX_DOMAINS_PER_RUN=15` 把后 8 个（小红书 / 知乎 / 微博 / 看准 / 牛客 / 1point3acres / v2ex / zhipin — 用户最常搜的 UGC 平台）整段砍掉，等于 reviews 章只搜了程序员垂类。`review_queries()` 现在把 `GENERAL_REVIEW_DOMAINS`（20 个 A 级全行业）从 cap 里 carve 出来永远查，truncation 只作用于 vertical extras，单公司 query 30 → 40。测试 +16 (调整 5 个 v0.1.18 contract 断言)，427 → 443 pass
 - **v0.1.23 修 reviews 章 LLM 抽取失败时兜底被跳过**：v0.1.14 加的 `_loose_keyword_reviews()` 兜底原本被 `isinstance(rf, ReviewFacts)` 卡住 — LLM 抽取返回 `None` 时 `rf=None` → isinstance=False → 兜底永不执行，reviews 章空即使 raw bucket 有 100+ 职场 URL。美的 / 美团 / 字节跳动三次实测都中招（cache 显示 157 个 牛客/脉脉/知乎/看准 URL 进 reviews bucket，但报告全空）。现在去掉 isinstance 闸门：reviews_items 非空就一定跑兜底，LLM 失败时直接用 loose 作为整个 facet，LLM 有结果时 merge。测试 +3，443 → 446 pass
+- **v0.2.0 视觉 + 内容双重重写（broker research + 招股书 hybrid）**：报告结构 redesign — masthead → cover 摘要（top thesis 句 + KPI 带 + 5 轴雷达 + snapshot diff + 来源 chip wall + collector soft-fail 横幅）+ 7 个编号章节（I-VII：公司画像 / 工商 / 司法 / 薪酬 / 加班 / 氛围 / 舆情）+ 4 个侧栏章节（面试准备 / 同行业对比 / JD 对照 / tail 推断 / 缺口 / Σ 来源）+ 风险提示 + Σ 来源附录 + footer。视觉 token：paper-cream `#fbfaf6` + broker-blue `#1a3a6e` + Noto Serif SC（display）/ Sans SC（UI）/ Mono（数据）。`DESIGN.md` 是 token 单一来源，`report.html.j2` 顶部 5 段方向契约是设计回归门。`compute_chapter_stories` / `compute_axes` / `compute_overall_verdict` / `compute_trial_checklist` / `compute_salary_band` / `diff_snapshots` 全部 deterministic + 纯本地，零 LLM 调用。`--version` 输出 `0.2.0`。测试调整 21 个断言匹配新结构（test_report_builder + test_v0120/121/122/013/014/015/016/017），446 → 445 pass
 - 不支持：批量多公司（watch 已有 CRUD，批跑未做）、Web 服务、Playwright
 
 ## 下次接手可考虑的深度改动

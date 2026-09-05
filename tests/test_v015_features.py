@@ -170,16 +170,17 @@ class TestPeerCompany:
 
 
 class TestBuildReportRendersNewChapters:
-    """End-to-end: build_report renders v0.1.15 chapters."""
+    """End-to-end: build_report renders v0.1.15 features (now merged into chapter 面试准备)."""
 
     def test_trial_checklist_renders(self):
+        """v0.2.0 — trial checklist bucket labels are 1 个月 / 3 个月 / 6 个月 (not 入职)."""
         data = ReportData(query=_q(), generated_at=datetime.now(timezone.utc))
         html = build_report(data)
         assert "试用期观察清单" in html
         assert "trial-grid" in html
-        assert "入职 1 个月" in html
-        assert "入职 3 个月" in html
-        assert "入职 6 个月" in html
+        assert "1 个月" in html
+        assert "3 个月" in html
+        assert "6 个月" in html
 
     def test_high_overtime_drives_specific_1mo_line(self):
         rf = ReviewFacts(
@@ -191,7 +192,8 @@ class TestBuildReportRendersNewChapters:
         html = build_report(data)
         assert "加班强度提示" in html
 
-    def test_interview_process_chapter_renders(self):
+    def test_interview_prep_chapter_renders(self):
+        """v0.2.0 — interview process merged into ch-interview-prep side chapter."""
         rf = ReviewFacts(
             interview_rounds=4,
             interview_style=["算法", "系统设计"],
@@ -207,12 +209,13 @@ class TestBuildReportRendersNewChapters:
         )
         html = build_report(data)
         assert "面试流程" in html
-        assert "ch-interview-process" in html
+        assert "ch-interview-prep" in html
         assert "算法" in html
         assert "系统设计" in html
-        assert "偏难" in html  # hard → 偏难 label
+        assert "较难" in html  # hard → 较难 label (v0.2.0 较难 vs old 偏难)
 
     def test_peer_comparison_chapter_renders(self):
+        """v0.2.0 — peer table uses div grid not <table>; class peer-table remains."""
         q = CompanyQuery(company="测试目标", position="后端", city="杭州")
         data = ReportData(
             query=q,
@@ -226,7 +229,7 @@ class TestBuildReportRendersNewChapters:
         html = build_report(data)
         assert "同行业对比" in html
         assert "ch-peers" in html
-        assert '<table class="peer-table"' in html
+        assert 'class="peer-table"' in html
         assert "测试目标" in html
         assert "美团" in html
         assert "京东" in html
@@ -235,9 +238,11 @@ class TestBuildReportRendersNewChapters:
         data = ReportData(query=_q(), generated_at=datetime.now(timezone.utc))
         html = build_report(data)
         assert "ch-peers" not in html
-        assert '<table class="peer-table"' not in html
+        assert 'class="peer-table"' not in html
 
     def test_no_interview_data_no_process_chapter(self):
+        """v0.2.0 — interview process sub-section is conditional inside ch-interview-prep."""
         data = ReportData(query=_q(), generated_at=datetime.now(timezone.utc))
         html = build_report(data)
-        assert "ch-interview-process" not in html
+        assert "ch-interview-prep" in html  # chapter itself always renders
+        # but the interview_rounds / style / difficulty section stays hidden when no data

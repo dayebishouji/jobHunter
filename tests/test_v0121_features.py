@@ -145,42 +145,45 @@ def _minimal_report(*, cp=None, rf=None):
 
 class TestReportRendering:
     def test_company_profile_renders_employee_and_insured_count(self):
+        """v0.2.0 — employee_count + insured_count rendered in 公司画像 data-table row."""
         cp = CompanyProfile(
             company_size="100-500人",
             employee_count=1200,
             insured_count=420,
         )
         html = build_report(_minimal_report(cp=cp))
-        assert "员工数" in html
-        assert "1,200" in html or "1200" in html  # Jinja renders int as plain digits
-        assert "参保人数" in html
+        assert "员工 / 参保" in html  # data-table row key
+        assert "1200" in html
+        assert "参保" in html
         assert "420" in html
 
     def test_company_profile_renders_without_optional_counts(self):
         cp = CompanyProfile(company_size="100-500人")
         html = build_report(_minimal_report(cp=cp))
-        assert "员工数" not in html
-        assert "参保人数" not in html
+        # When counts absent, row key still renders but with "未披露"
+        assert "员工 / 参保" in html
+        assert "未披露" in html
 
-    def test_typical_off_time_renders_in_overtime_chapter(self):
+    def test_typical_off_time_renders_in_team_health_chapter(self):
+        """v0.2.0 — typical_off_time surfaces in chapter V 团队健康度 takeaway."""
         rf = ReviewFacts(
             typical_off_time="约 10:00 PM",
             typical_off_time_evidence="「十点走是常态」",
             typical_off_time_url="https://example.com/post/1",
         )
         html = build_report(_minimal_report(rf=rf))
-        assert "典型下班时间" in html
-        assert "约 10:00 PM" in html
+        assert "21:30" not in html  # not the old format
+        # Chapter V takeaway echoes typical_off_time + evidence
+        assert "10:00 PM" in html
         assert "十点走是常态" in html
-        assert "example.com/post/1" in html
 
-    def test_overtime_chapter_renders_without_typical_off_time(self):
+    def test_team_health_chapter_renders_without_typical_off_time(self):
         rf = ReviewFacts(
             overtime_signals=[OvertimeSignal(pattern="996", intensity="high")],
         )
         html = build_report(_minimal_report(rf=rf))
-        # Banner must NOT render when field is empty.
-        assert "典型下班时间" not in html
+        # Without typical_off_time the takeaway falls back to "加班信号 N 条"
+        assert "加班信号" in html or "本次未能取得" in html
 
     def test_typical_off_time_alone_renders(self):
         """typical_off_time surfaces even when no overtime_signals landed."""

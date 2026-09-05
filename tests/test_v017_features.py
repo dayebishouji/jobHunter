@@ -78,6 +78,7 @@ class TestSalaryBand:
         assert band["max"] == 45
 
     def test_band_renders_in_report(self):
+        """v0.2.0 — band heading is 「薪酬 band」 (research-report tone); percentile labels still P25 / P50 / P75."""
         rf = ReviewFacts(salary_signals=[
             SalarySignal(base_monthly_k=20),
             SalarySignal(base_monthly_k=30),
@@ -88,7 +89,7 @@ class TestSalaryBand:
         )
         html = build_report(data)
         assert "salary-band" in html
-        assert "薪酬分位带" in html
+        assert "薪酬 band" in html
         assert "P25" in html
         assert "P75" in html
 
