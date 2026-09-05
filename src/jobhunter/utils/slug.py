@@ -27,3 +27,14 @@ def make_slug(query: CompanyQuery, ts: str) -> str:
             parts.append(p)
     parts.append(ts)
     return "-".join(parts)
+
+
+def batch_dir_slug(file_path: str | Path, ts: str) -> str:
+    """Return the directory name for a batch run: `{file_stem}-{ts}`.
+
+    `file_stem` is the basename without extension; non-ASCII characters are
+    passed through so the directory name remains human-readable (e.g.
+    `companies-20260905-1430` or `秋招清单-20260905-1430`).
+    """
+    stem = Path(file_path).stem
+    return f"{stem}-{ts}"

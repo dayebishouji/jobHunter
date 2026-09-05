@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>秋招横向对比 · jobHunter BATCH</title>
+<meta name="description" content="jobHunter 批量横向对比报告 — {{ meta.run_count }} 家公司（成功 {{ meta.success_count }} / 失败 {{ meta.failed_count }}）" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Sans+Mono:wght@400;500;700&display=swap" />
+<style>{{ css | safe }}</style>
+<style>
+/* === batch-page local additions === */
+.batch-masthead {
+  border-bottom: 2px solid var(--ink, #1a1a1a);
+  padding: 24px 32px 18px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px 24px;
+  align-items: end;
+}
+.batch-masthead .stamp {
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--broker-blue, #1a3a6e);
+  text-transform: uppercase;
+}
+.batch-masthead h1 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 28px;
+  font-weight: 700;
+  margin: 4px 0 0;
+  color: var(--ink, #1a1a1a);
+}
+.batch-masthead .meta-line {
+  font-size: 13px;
+  color: #555;
+}
+.batch-masthead .kpi-row {
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+  color: #444;
+}
+.batch-masthead .kpi-row b {
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 16px;
+  color: var(--ink, #1a1a1a);
+}
+.batch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.batch-table thead th {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--ink, #1a1a1a);
+  background: var(--paper-deep, #f1ece0);
+  white-space: nowrap;
+}
+.batch-table thead th.num {
+  text-align: right;
+}
+.batch-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #d8d4c7;
+  vertical-align: middle;
+}
+.batch-table tbody td.num {
+  text-align: right;
+  font-family: 'Noto Sans Mono', monospace;
+}
+.batch-table tbody tr:hover {
+  background: rgba(184, 133, 74, 0.06);
+}
+.batch-table tbody tr.status-failed {
+  background: rgba(198, 40, 40, 0.04);
+  color: #666;
+}
+.batch-table tbody tr.status-failed td:first-child::before {
+  content: "✗ ";
+  color: var(--bad, #c62828);
+  font-weight: 700;
+}
+.verdict-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Noto Sans SC', sans-serif;
+  letter-spacing: 0.04em;
+}
+.verdict-recommend { background: rgba(46, 125, 50, 0.12); color: var(--good, #2e7d32); border: 1px solid rgba(46, 125, 50, 0.4); }
+.verdict-caution   { background: rgba(184, 133, 74, 0.12); color: var(--mid, #b8854a); border: 1px solid rgba(184, 133, 74, 0.4); }
+.verdict-avoid     { background: rgba(198, 40, 40, 0.12); color: var(--bad, #c62828); border: 1px solid rgba(198, 40, 40, 0.4); }
+.verdict-neutral   { background: rgba(120, 120, 120, 0.08); color: #555; border: 1px solid rgba(120, 120, 120, 0.3); }
+.axis-strip {
+  display: inline-flex;
+  gap: 2px;
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 11px;
+}
+.axis-strip span {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  padding: 1px 0;
+  border-radius: 2px;
+  background: var(--paper-deep, #f1ece0);
+  color: var(--ink, #1a1a1a);
+}
+.axis-strip span.fill-1 { background: #c62828; color: white; }
+.axis-strip span.fill-2 { background: #d97a30; color: white; }
+.axis-strip span.fill-3 { background: #b8854a; color: white; }
+.axis-strip span.fill-4 { background: #6e9b3f; color: white; }
+.axis-strip span.fill-5 { background: #2e7d32; color: white; }
+.score-cell {
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+}
+.report-link {
+  font-size: 11px;
+  color: var(--broker-blue, #1a3a6e);
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.failure-block {
+  margin: 24px 32px;
+  padding: 18px 24px;
+  background: rgba(198, 40, 40, 0.05);
+  border-left: 3px solid var(--bad, #c62828);
+}
+.failure-block h2 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 16px;
+  margin: 0 0 10px;
+  color: var(--bad, #c62828);
+}
+.failure-block ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.failure-block li {
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(0,0,0,0.08);
+  font-size: 13px;
+}
+.failure-block li:last-child {
+  border-bottom: none;
+}
+.failure-block .err {
+  color: #888;
+  font-family: 'Noto Sans Mono', monospace;
+  font-size: 12px;
+  margin-left: 16px;
+}
+.batch-section {
+  padding: 0 32px;
+  margin: 28px 0;
+}
+.batch-section h2 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 14px;
+  color: var(--broker-blue, #1a3a6e);
+}
+.batch-footer {
+  padding: 24px 32px;
+  margin-top: 32px;
+  border-top: 1px solid #d8d4c7;
+  font-size: 11px;
+  color: #777;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+
+<header class="batch-masthead">
+  <div>
+    <div class="stamp">jobHunter · BATCH RESEARCH · {{ meta.generated_at }}</div>
+    <h1>秋招横向对比 · {{ meta.source_file }}</h1>
+    <div class="meta-line">
+      共 <b>{{ meta.run_count }}</b> 家公司 ·
+      成功 <b style="color: var(--good, #2e7d32);">{{ meta.success_count }}</b> ·
+      失败 <b style="color: var(--bad, #c62828);">{{ meta.failed_count }}</b>
+    </div>
+  </div>
+  <div class="kpi-row">
+    <div>总成本<br><b>${{ '%.4f' | format(meta.total_cost_usd) }}</b></div>
+    <div>总输入 tokens<br><b>{{ meta.total_tokens_in }}</b></div>
+    <div>总输出 tokens<br><b>{{ meta.total_tokens_out }}</b></div>
+  </div>
+</header>
+
+<section class="batch-section">
+  <h2>对比表（按综合分排序）</h2>
+  <table class="batch-table">
+    <thead>
+      <tr>
+        <th>公司</th>
+        <th>岗位</th>
+        <th>城市</th>
+        <th class="num">综合分</th>
+        <th>判断</th>
+        <th>5 轴</th>
+        <th class="num">司法</th>
+        <th class="num">异常</th>
+        <th class="num">薪酬 P50</th>
+        <th>状态</th>
+        <th>详情</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{% if r.status == 'failed' %}status-failed{% endif %}">
+        <td><strong>{{ r.company }}</strong></td>
+        <td>{{ r.position or '—' }}</td>
+        <td>{{ r.city or '—' }}</td>
+        <td class="num">
+          {% if r.overall_score is not none %}
+            <span class="score-cell">{{ '%.2f' | format(r.overall_score) }}</span>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
+          {% if r.verdict %}
+            <span class="verdict-badge verdict-{{ r.verdict }}">{{ r.verdict }}</span>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
+          {% if r.axis_overtime is not none %}
+            <span class="axis-strip" title="加班 {{ r.axis_overtime }} / 司法 {{ r.axis_judicial }} / 薪酬 {{ r.axis_salary }} / 工商 {{ r.axis_business }} / 氛围 {{ r.axis_vibe }}">
+              <span class="fill-{{ r.axis_overtime }}">{{ r.axis_overtime }}</span>
+              <span class="fill-{{ r.axis_judicial }}">{{ r.axis_judicial }}</span>
+              <span class="fill-{{ r.axis_salary }}">{{ r.axis_salary }}</span>
+              <span class="fill-{{ r.axis_business }}">{{ r.axis_business }}</span>
+              <span class="fill-{{ r.axis_vibe }}">{{ r.axis_vibe }}</span>
+            </span>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td class="num">
+          {% if r.case_count_total is not none %}{{ r.case_count_total }}{% else %}—{% endif %}
+        </td>
+        <td class="num">
+          {% if r.anomaly_listed is none %}—{% elif r.anomaly_listed %}是{% else %}否{% endif %}
+        </td>
+        <td class="num">
+          {% if r.salary_p50 is not none %}{{ '%.1f' | format(r.salary_p50) }}K{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if r.status == 'success' %}
+            <span style="color: var(--good, #2e7d32);">✓</span>
+          {% else %}
+            <span style="color: var(--bad, #c62828);" title="{{ r.error or '' }}">失败</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.report_path %}
+            <a class="report-link" href="{{ r.report_path.name }}">打开</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% set failures = rows | selectattr('status', 'equalto', 'failed') | list %}
+{% if failures %}
+<section class="failure-block">
+  <h2>失败列表（{{ failures | length }}）</h2>
+  <ul>
+    {% for r in failures %}
+    <li>
+      <strong>{{ r.company }}</strong>
+      {% if r.position %}<span style="color: #888;"> · {{ r.position }}</span>{% endif %}
+      {% if r.city %}<span style="color: #888;"> · {{ r.city }}</span>{% endif %}
+      <div class="err">{{ r.error or '未知错误' }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<footer class="batch-footer">
+  jobHunter batch v0.3.1 · {{ meta.generated_at }} ·
+  {{ meta.source_file }} · {{ meta.run_count }} 公司 ·
+  本表综合了 Tavily + Anthropic Claude 的公开数据，仅供个人求职参考
+</footer>
+
+</body>
+</html>

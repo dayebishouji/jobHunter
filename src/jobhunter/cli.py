@@ -278,6 +278,153 @@ main.add_command(run_cmd, name="run")
 main.add_command(run_cmd, name="check")
 
 
+# ---------- v0.3.1 — batch mode ----------
+
+from jobhunter.batch import build_batch_report_html, parse_batch_file, run_batch  # noqa: E402
+from jobhunter.batch import BatchMeta  # noqa: E402
+from jobhunter.utils.slug import batch_dir_slug  # noqa: E402
+
+
+@main.command(name="batch")
+@click.option("--file", "-f", required=True, type=click.Path(exists=True, path_type=Path), help="CSV 文件路径（一行一公司：`公司,岗位,城市`，# 开头为注释）")
+@click.option("--city", "-y", default="", help="默认城市（行内未填 city 时使用）")
+@click.option("--no-judicial", is_flag=True, default=False, help="跳过司法")
+@click.option("--no-news", is_flag=True, default=False, help="跳过新闻")
+@click.option("--jd", "jd_text", default=None, help="JD 文本（可选，所有公司共用）")
+@click.option("--jd-file", "jd_file", default=None, type=click.Path(exists=True, path_type=Path), help="JD 文件路径")
+@click.option("--output", "-o", default=None, type=click.Path(path_type=Path), help="per-company 报告输出目录（默认 reports/）")
+@click.option("--batch-out", "-O", default=None, type=click.Path(path_type=Path), help="聚合页输出目录（默认 reports/batch/{file_stem}-{ts}/）")
+@click.option("--batch-concurrency", default=3, type=int, help="并发上限（asyncio.Semaphore，默认 3）")
+@click.option("--strict", is_flag=True, default=False, help="fail-fast：任一公司失败立即 abort（默认 best-effort）")
+@click.option("--no-open", is_flag=True, default=False, help="不自动打开聚合页")
+@click.option("--print", "print_pdf", is_flag=True, default=False, help="生成后触发 ?print=1")
+def batch_cmd(
+    file: Path,
+    city: str,
+    no_judicial: bool,
+    no_news: bool,
+    jd_text: str | None,
+    jd_file: Path | None,
+    output: Path | None,
+    batch_out: Path | None,
+    batch_concurrency: int,
+    strict: bool,
+    no_open: bool,
+    print_pdf: bool,
+) -> None:
+    """批量跑多家公司（CSV 文件输入），生成 per-company 报告 + 横向对比聚合页。
+
+    文件格式：`公司,岗位,城市` 一行一个；# 开头为注释；空行跳过。
+    并发上限默认 3（asyncio.Semaphore）；失败默认 best-effort（--strict 改 fail-fast）。
+    """
+    _setup_logging()
+    settings = load_settings()
+    ok, missing = settings.is_ready()
+    if not ok:
+        err_console.print(f"[red]缺少 API key：[/red]{', '.join(missing)}")
+        raise click.exceptions.Exit(code=2)
+
+    if jd_text and jd_file:
+        err_console.print("[red]--jd 与 --jd-file 二选一[/red]")
+        raise click.exceptions.Exit(code=2)
+    if jd_file:
+        jd_text = jd_file.read_text(encoding="utf-8").strip() or None
+
+    # Parse batch file → list of queries
+    try:
+        queries = parse_batch_file(file, default_city=city)
+    except Exception as e:  # noqa: BLE001
+        err_console.print(f"[red]无法解析 batch 文件 {file}：[/red]{e}")
+        raise click.exceptions.Exit(code=2)
+
+    if not queries:
+        err_console.print(f"[red]batch 文件 {file} 没有有效公司行[/red]")
+        raise click.exceptions.Exit(code=2)
+
+    console.print(f"[bold]batch 模式[/bold] · 共 {len(queries)} 家公司 · 并发 {batch_concurrency} · 源文件 {file.name}")
+    for q in queries:
+        console.print(f"  • {q.company} · {q.position or '—'} · {q.city or '—'}")
+
+    # Compute output dirs
+    per_company_dir = output or settings.output_dir
+    per_company_dir.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime("%Y%m%d-%H%M")
+    batch_dir_name = batch_dir_slug(file, ts)
+    batch_dir = batch_out or (per_company_dir / "batch" / batch_dir_name)
+    batch_dir.mkdir(parents=True, exist_ok=True)
+
+    # Run with progress
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task(f"并发 {batch_concurrency} 路跑 {len(queries)} 家公司...", total=len(queries))
+        try:
+            results = asyncio.run(
+                run_batch(
+                    queries,
+                    settings=settings,
+                    output_dir=per_company_dir,
+                    batch_out_dir=batch_dir,
+                    concurrency=batch_concurrency,
+                    include_judicial=not no_judicial,
+                    include_news=not no_news,
+                    jd_text=jd_text,
+                )
+            )
+            # Update progress as results come in (best-effort: just mark all done)
+            for _ in results:
+                progress.update(task, advance=1)
+        except Exception as e:  # noqa: BLE001
+            progress.update(task, description="[red]失败")
+            err_console.print(f"[red]batch run 失败：[/red]{e}")
+            raise click.exceptions.Exit(code=1)
+
+    # Strict mode: any failure → exit 1
+    if strict and any(r.status == "failed" for r in results):
+        failed_names = [r.company for r in results if r.status == "failed"]
+        err_console.print(f"[red]--strict 模式下失败：[/red]{', '.join(failed_names)}")
+        raise click.exceptions.Exit(code=1)
+
+    # Build aggregate HTML
+    successes = [r for r in results if r.status == "success"]
+    failures = [r for r in results if r.status == "failed"]
+    meta = BatchMeta(
+        source_file=file.name,
+        run_count=len(results),
+        success_count=len(successes),
+        failed_count=len(failures),
+        total_cost_usd=round(sum(r.cost_usd for r in results), 4),
+        total_tokens_in=sum(r.tokens_in for r in results),
+        total_tokens_out=sum(r.tokens_out for r in results),
+        generated_at=ts,
+    )
+    html = build_batch_report_html(results, meta)
+    index_path = batch_dir / "index.html"
+    index_path.write_text(html, encoding="utf-8")
+
+    # Summary
+    console.print(f"[green]✓[/green] 完成 · 成功 {len(successes)} / 失败 {len(failures)}")
+    console.print(f"  聚合页：{index_path}")
+    console.print(f"  总成本：约 ${meta.total_cost_usd:.4f}（输入 {meta.total_tokens_in} / 输出 {meta.total_tokens_out} tokens）")
+    if not no_open or print_pdf:
+        from jobhunter.utils.browser import open_in_browser
+        open_in_browser(index_path)
+
+    if print_pdf:
+        try:
+            import webbrowser
+            webbrowser.open(index_path.as_uri() + "?print=1", new=2)
+        except Exception as e:  # noqa: BLE001
+            err_console.print(f"[yellow]?print=1 触发失败：[/yellow]{e}")
+
+
 # ---------- v0.1.17 — watchlist subcommands ----------
 
 @click.group()
