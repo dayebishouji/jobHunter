@@ -126,7 +126,10 @@ class TavilyClient:
         except Exception as e:  # noqa: BLE001
             logger.warning("Tavily qna_search failed: %s | query=%s", e, query)
             raise
-        answer = (result.get("answer") or "").strip()
+        # Tavily SDK's qna_search returns the answer as a plain string
+        # (confirmed via inspect.signature: `-> str`), not a dict. Older
+        # code mistakenly called .get("answer") on it.
+        answer = (result or "").strip()
         return answer
 
     async def extract(self, urls: list[str]) -> list[RawItem]:

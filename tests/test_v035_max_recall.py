@@ -12,6 +12,7 @@ Tavily failures so the pipeline never raises; tests verify that.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from jobhunter.collectors.extract_reviews import (
     _EXTRACT_SITES,
@@ -39,6 +40,8 @@ from jobhunter.report.builder import (
     build_report,
     compute_review_diagnostics,
 )
+from jobhunter.search.cache import FileCache
+from jobhunter.search.tavily_client import TavilyClient
 
 
 def _settings() -> Settings:
@@ -92,6 +95,67 @@ class TestQnaReviewsCollector:
         assert "棒谷科技" in prompt
         for kw in ("员工评价", "工作体验", "加班", "薪资"):
             assert kw in prompt
+
+
+# ---------- v0.3.5 hotfix — TavilyClient.qna_search return-type contract ----------
+#
+# Regression: Tavily SDK's AsyncTavilyClient.qna_search returns `str` (confirmed
+# via inspect.signature). The v0.3.5 wrapper mistakenly called `.get("answer")`
+# on the result, raising AttributeError on every run (soft-failed, but lost the
+# entire Layer B AI-summary source). These tests pin the contract by mocking the
+# SDK and asserting the wrapper handles the string return type correctly.
+
+class TestTavilyClientQnaSearchWrapper:
+    """Pin TavilyClient.qna_search SDK contract: SDK returns str, not dict."""
+
+    async def test_returns_string_answer_verbatim(self):
+        sdk_answer = "员工评价：加班严重，996，月薪 8k。"
+        client = TavilyClient(_settings(), cache=FileCache(dir_path=_tmp_cache_dir()))
+
+        async def fake_qna(query, **_):
+            assert "棒谷科技" in query
+            return sdk_answer  # SDK contract: str, not {"answer": ...}
+        client._client.qna_search = fake_qna  # type: ignore[assignment]
+
+        out = await client.qna_search('"棒谷科技" 员工评价')
+
+        assert out == sdk_answer
+        assert isinstance(out, str)
+
+    async def test_empty_string_returned_as_empty_string(self):
+        client = TavilyClient(_settings(), cache=FileCache(dir_path=_tmp_cache_dir()))
+
+        async def fake_qna(query, **_):
+            return ""
+        client._client.qna_search = fake_qna  # type: ignore[assignment]
+
+        out = await client.qna_search("anything")
+
+        # Falsy but not None — caller distinguishes no_answer via `if not answer`.
+        assert out == ""
+
+    async def test_whitespace_is_stripped(self):
+        client = TavilyClient(_settings(), cache=FileCache(dir_path=_tmp_cache_dir()))
+
+        async def fake_qna(query, **_):
+            return "  996 月薪 8k  \n"
+        client._client.qna_search = fake_qna  # type: ignore[assignment]
+
+        out = await client.qna_search("anything")
+
+        assert out == "996 月薪 8k"
+
+    async def test_sdk_exception_propagates(self):
+        """Wrapper must not swallow SDK errors — caller (collector) decides soft-fail."""
+        client = TavilyClient(_settings(), cache=FileCache(dir_path=_tmp_cache_dir()))
+
+        async def fake_qna(query, **_):
+            raise RuntimeError("Tavily 5xx")
+        client._client.qna_search = fake_qna  # type: ignore[assignment]
+
+        import pytest
+        with pytest.raises(RuntimeError, match="Tavily 5xx"):
+            await client.qna_search("anything")
 
 
 # ---------- Layer C — extract reviews collector ----------
@@ -318,3 +382,9 @@ class _FakeResult:
 
 def _i(slug: str) -> RawItem:
     return RawItem(title="t", url=f"https://x.com/{slug}", content="c", source="test")
+
+
+def _tmp_cache_dir():
+    """Per-test temp cache dir so wrapper tests don't pollute user cache."""
+    import tempfile
+    return Path(tempfile.mkdtemp(prefix="jobhunter_test_"))
